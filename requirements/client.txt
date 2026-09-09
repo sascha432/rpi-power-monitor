@@ -1,0 +1,9 @@
+# Web dashboard client dependencies (Windows or Linux).
+-r common.txt
+
+# The client is a stdlib-only Python web server (HTTP + WebSocket): no extra
+# pip packages are required beyond PyYAML (from common.txt), which is used to
+# parse config/client.yaml.
+#
+# The browser chart library (uPlot v1.6.31) is vendored under
+# client/web/static/vendor/ and served locally - no CDN / internet needed.

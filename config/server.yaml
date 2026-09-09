@@ -1,0 +1,89 @@
+# ============================================================================
+#  rpi-power-monitor — SERVER configuration
+#  Runs on the Raspberry Pi (Linux).
+#  Reads an INA3221 (3-channel I2C power monitor) and streams per-channel
+#  readings to TCP clients.
+#
+#  NOTE: channel names / wiring below are EXAMPLES — rename and choose shunts
+#  to match your actual hardware.
+# ============================================================================
+
+server:
+  name: rpi-power-monitor   # reported to clients in the "registry" message
+  bind_host: 0.0.0.0        # listen on all interfaces
+  bind_port: 7000           # TCP port for GUI clients
+  max_clients: 8            # soft cap on simultaneous connections
+  allowed_clients:         # empty/omitted => localhost only; list IPs/CIDRs to allow more
+   - 127.0.0.0/8
+   - 192.168.0.0/24
+
+logging:
+  level: DEBUG              # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+# ---------------------------------------------------------------------------
+# Sensor (INA3221)
+# ---------------------------------------------------------------------------
+sensor:
+  type: ina3221             # driver to load (only "ina3221" exists today)
+  i2c:
+    bus: 1                  # /dev/i2c-1 on a Raspberry Pi
+    address: "0x40"         # selected by the A0/A1 strap pins (0x40 .. 0x43)
+
+  shunt:
+    - channel: 1
+      name: 12V Input
+      voltage: 12.0
+      shunt_milliohm: 25.0
+      aggregate: 12v_rail     # aggregate channel for 12V rail (5v buck converter and 12v pi input)
+    - channel: 2
+      name: 12V NAS
+      voltage: 12.0
+      shunt_milliohm: -25.0   # negative shunt value to reverse current direction
+      aggregate: 12v_rail     # aggregate channel for 12V rail (12v NAS output)
+    - channel: 3
+      name: 5V Input
+      voltage: 5.0
+      shunt_milliohm: 25.0
+      aggregate: 5v_rail      # aggregate channel for 5V rail (buck converter on channel 1)
+
+# ---------------------------------------------------------------------------
+# INA3221 Sampling
+# ---------------------------------------------------------------------------
+sampling:
+  # Poll period is NOT configured here - it is derived from the chip timing:
+  #   interval = averaging * (bus_conversion_us + shunt_conversion_us)
+  averaging: 64             # INA3221 averaging mode: 1|4|16|64|128|256|1024
+  bus_conversion_us: 1100   # INA3221 bus-voltage conversion time
+  shunt_conversion_us: 1100 # INA3221 shunt-voltage conversion time
+  # valid conversion times: 140|204|332|588|1100|2116|4156|8244 us
+
+# ---------------------------------------------------------------------------
+# MQTT settings
+# ---------------------------------------------------------------------------
+mqtt:
+  host: ~               # disable MQTT (null host or port 0 disables MQTT)
+  #host: localhost
+  port: 1883            # set to 0 to disable MQTT as well
+  update_interval: 60
+  topic_prefix: home
+  base_topic: acidpi4_power_monitor
+  auto_discovery: true
+  auto_discovery_prefix: homeassistant
+
+  channels:
+    - name: "12V Input"
+      topic: 12v_input
+      units: ["V", "A", "W", "kWh"]
+    - name: "12V NAS"
+      topic: 12v_nas
+      units: ["V", "A", "W", "kWh"]
+    - name: "5V Input"
+      topic: 5v_input
+      units: ["V", "A", "W", "kWh"]
+    - name: "12v_rail"
+      topic: aggregated_12v
+      units: ["V", "A", "W", "kWh"]
+    - name: "5v_rail"
+      topic: aggregated_5v
+      units: ["V", "A", "W", "kWh"]

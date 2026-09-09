@@ -1,0 +1,2 @@
+# Shared by server and client (config parsing)
+PyYAML>=6.0

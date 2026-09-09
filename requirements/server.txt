@@ -1,0 +1,10 @@
+# Raspberry Pi (Linux) server dependencies.
+-r common.txt
+
+# I2C access for the INA3221 driver.
+#   smbus2: thin wrapper around linux i2c-dev
+#   alternative: adafruit-circuitpython-ina3221 (higher-level, own i2c stack)
+smbus2>=0.4.3
+
+# MQTT publishing (averaged per-channel JSON over update_interval)
+paho-mqtt>=2.0

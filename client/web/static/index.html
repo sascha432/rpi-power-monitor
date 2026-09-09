@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Power Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar">
+    <h1 id="appTitle">Power Monitor</h1>
+    <span id="connPill" class="bad" title="Connection status">connecting…</span>
+  </header>
+
+  <div id="toolbar">
+    <label>Metric
+      <select id="selMetric"></select>
+    </label>
+    <label>Window
+      <select id="selWindow"></select>
+    </label>
+    <label>Energy
+      <select id="selEnergy"></select>
+    </label>
+    <button id="btnTheme" type="button" title="Toggle light/dark theme">Theme</button>
+    <button id="btnReset" type="button" title="Reset UI settings (clears the cookie)">Reset</button>
+    <span id="ageText" class="muted"></span>
+  </div>
+
+  <section id="cards" aria-label="Channel readings"></section>
+
+  <section id="chartBox" aria-label="Live chart">
+    <div id="chart"></div>
+  </section>
+
+  <footer id="foot">
+    <p class="muted">
+      Live readings stream over a WebSocket from the power-monitor dashboard.
+      UI settings (metric, window, energy unit, theme, hidden channels) are stored
+      in a browser cookie.
+    </p>
+  </footer>
+
+  <script src="/static/vendor/uPlot.iife.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

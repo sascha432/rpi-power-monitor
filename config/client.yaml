@@ -1,0 +1,88 @@
+# ============================================================================
+#  rpi-power-monitor — CLIENT (web dashboard) configuration
+#  Cross-platform (Windows or Linux).
+#
+#  The client is a stdlib Python web server. It connects to the Raspberry Pi
+#  over TCP (raw binary stream), keeps a rolling history, and serves an
+#  HTML/JS dashboard over HTTP + WebSocket. Open a browser at
+#      http://<web.host>:<web.port>/       (default http://<this-machine>:8080/)
+#
+#  HOW TO CONFIGURE
+#  ---------------------------------------------------------------------------
+#  1. connection.host/port  -> where the Pi's `python -m server` runs (TCP 7000).
+#  2. channels:[]           -> MUST mirror the server's channel ids/names:
+#       * rails     : channel_id = the INA3221 input number (1..3), name =
+#                     sensor.shunt[].name in config/server.yaml
+#       * aggregates: channel_id = 100 + index over the SORTED aggregate tags
+#                     (e.g. tags {5v_rail, 12v_rail} -> 100 = 12v_rail,
+#                     101 = 5v_rail); name = the tag itself.
+#     Keep this table in sync with config/server.yaml when you rename shunts
+#     or aggregates - the binary wire carries ids only, never names.
+#  3. If the dashboard runs on a DIFFERENT machine than the viewer, make sure
+#     the Pi's server.yaml `server.allowed_clients` includes that machine's
+#     subnet (or 0.0.0.0/0), otherwise the Pi rejects the TCP connection.
+#  4. UI settings (metric, theme, energy unit, time window, hidden channels)
+#     are stored by the browser in a cookie - nothing to configure here.
+# ============================================================================
+
+connection:
+  host: 192.168.0.4         # TCP server = the Raspberry Pi. Alternatives:
+                            #   raspberrypi.local   (mDNS, if enabled)
+                            #   127.0.0.1           (dashboard on the Pi itself)
+  port: 7000                # must match server.bind_port
+  connect_timeout_s: 5
+  read_timeout_s: 10        # reconnect if no frame arrives within this time
+  reconnect: true           # automatically keep retrying when disconnected
+  reconnect_delay_s: 2.0
+
+# ---------------------------------------------------------------------------
+# Web dashboard (HTTP + WebSocket) server
+# ---------------------------------------------------------------------------
+web:
+  host: 0.0.0.0             # bind address
+  port: 8080                # browser URL: http://<host>:8080/
+  allowed_clients:         # empty/omitted => localhost only; list IPs/CIDRs to allow more
+   - 127.0.0.0/8
+   - 192.168.0.0/24
+
+# ---------------------------------------------------------------------------
+# Display defaults / UI catalog. These are sent to the browser on connect and
+# used as defaults; the user's choices are persisted in a cookie.
+# ---------------------------------------------------------------------------
+display:
+  title: "Power Monitor"
+  default_metric: power_w   # power_w | voltage_v | current_a
+  update_ms: 500            # WebSocket sample-push cadence (ms)
+  history_points: 3600      # rolling samples kept per channel (~10 min @ 7 Hz)
+  energy_unit: kWh          # Wh | kWh  (display only; server always sends Wh)
+  theme: dark               # default UI theme
+  theme_options: [dark, light]
+  energy_units: [Wh, kWh]
+
+# ---------------------------------------------------------------------------
+# Channels to render (MUST mirror config/server.yaml, see header note).
+# kind: "rail" (V/I/P) | "aggregate" (P only). label is optional UI text.
+# ---------------------------------------------------------------------------
+channels:
+  - id: 1
+    name: 12V Input         # sensor.shunt[0] in server.yaml
+    kind: rail
+    aggregate: 12v_rail
+  - id: 2
+    name: 12V NAS           # sensor.shunt[1] in server.yaml
+    kind: rail
+    aggregate: 12v_rail
+  - id: 3
+    name: 5V Input          # sensor.shunt[2] in server.yaml
+    kind: rail
+    aggregate: 5v_rail
+  # Aggregates: id = 100 + index over SORTED aggregate tags.
+  - id: 100
+    name: 12v_rail
+    label: 12V Rail (total)
+    kind: aggregate
+  - id: 101
+    name: 5v_rail
+    label: 5V Rail (total)
+    kind: aggregate
+
