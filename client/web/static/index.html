@@ -9,10 +9,30 @@
 </head>
 <body>
   <div id="layout">
+    <button id="navToggle" class="nav-toggle" type="button"
+            title="Toggle menu" aria-label="Toggle sidebar" aria-expanded="true">
+      <svg class="ic ic-menu" viewBox="0 0 24 24" aria-hidden="true">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+      <svg class="ic ic-collapse" viewBox="0 0 24 24" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+
     <nav id="sidebar" aria-label="Sections">
       <ul class="nav-list">
         <li>
-          <button id="navDashboard" class="nav-item is-active" type="button">Dashboard</button>
+          <button id="navDashboard" class="nav-item is-active" type="button">
+            <svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+            <span class="nav-label">Dashboard</span>
+          </button>
         </li>
       </ul>
 
@@ -21,27 +41,18 @@
 
       <ul class="nav-list nav-foot">
         <li>
-          <button id="navSettings" class="nav-item" type="button">Settings</button>
+          <button id="navSettings" class="nav-item" type="button">
+            <svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span class="nav-label">Settings</span>
+          </button>
         </li>
       </ul>
     </nav>
 
     <main id="main">
-      <div id="toolbar">
-        <label>Metric
-          <select id="selMetric"></select>
-        </label>
-        <label>Window
-          <select id="selWindow"></select>
-        </label>
-        <label>Energy
-          <select id="selEnergy"></select>
-        </label>
-        <button id="btnTheme" type="button" title="Toggle light/dark theme">Theme</button>
-        <button id="btnReset" type="button" title="Reset UI settings (clears the cookie)">Reset</button>
-        <span id="ageText" class="muted"></span>
-      </div>
-
       <section id="cards" aria-label="Channel readings"></section>
 
       <section id="channelView" aria-label="Channel detail" hidden>
@@ -53,21 +64,11 @@
         <div id="channelFocus" aria-label="Focused channel"></div>
       </section>
 
-      <section id="chartBox" aria-label="Live chart">
-        <div id="chart"></div>
+      <section id="chartBox" aria-label="Dashboard graphs">
+        <div id="dashGraphs"></div>
       </section>
 
-      <section id="settingsView" aria-label="Settings" hidden>
-        <h2>Settings</h2>
-        <p class="muted">
-          Chart and appearance choices (metric, time window, energy unit, theme,
-          hidden channels) are made from the toolbar shown on the Dashboard and
-          Channel views and are stored in a <code>pwm_settings</code> browser
-          cookie so they survive reloads. There are no server-side settings to
-          edit here yet.
-        </p>
-        <button id="btnResetS" type="button" title="Reset UI settings (clears the cookie)">Reset UI settings</button>
-      </section>
+      <section id="settingsView" aria-label="Settings" hidden></section>
     </main>
   </div>
 

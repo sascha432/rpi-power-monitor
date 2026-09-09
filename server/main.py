@@ -27,7 +27,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from shared.binary import (
-    DAILY_BARS,
+    DAILY_MAX,
     FRAME_SIZE,
     pack_channel,
     pack_daily_header,
@@ -133,19 +133,21 @@ def _make_daily_block(
     """Build the one-shot 'daily energy' control block for a new TCP client.
 
     Packs a header frame plus one value frame per (day, channel): the last
-    ``DAILY_BARS`` calendar days, oldest -> today, in mWh, for every published
-    channel (rails then aggregates, using the same wire ids as the sample
-    frames). The server sends this to each client once on connect so a
-    dashboard can render a last-7-days consumption chart; today's value frame
-    also carries the matching all-time total so the current-day bar can be
-    kept live from the cumulative total already present in every sample
-    frame (no need to re-send the daily block).
+    ``n`` calendar days (oldest -> today) the energy store keeps, capped at
+    ``DAILY_MAX`` (90), in mWh, for every published channel (rails then
+    aggregates, using the same wire ids as the sample frames). The server
+    sends this once per connection so a dashboard can render a
+    daily-consumption chart of configurable length; today's value frame also
+    carries the matching all-time total so the current-day bar stays live from
+    the cumulative total already present in every sample frame (no need to
+    re-send the daily block).
     """
-    today, per_day, totals = energy.last_days(DAILY_BARS)
+    n = min(energy.storage_days, DAILY_MAX)
+    today, per_day, totals = energy.last_days(n)
     ids: List[Tuple[str, int]] = [(item.name, item.channel) for item in rails] + [
         (tag, AGGREGATE_ID_BASE + index) for index, tag in enumerate(tags)
     ]
-    block = bytearray(pack_daily_header(int(today.replace("-", "")), len(ids)))
+    block = bytearray(pack_daily_header(int(today.replace("-", "")), len(ids), n_days=n))
     last = len(per_day) - 1
     for day_index, bucket in enumerate(per_day):
         for name, channel_id in ids:

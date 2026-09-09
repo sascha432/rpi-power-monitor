@@ -52,15 +52,16 @@ _INT64_MIN, _INT64_MAX = -(1 << 63), (1 << 63) - 1
 DAILY_HEADER_ID = 0x8000_0001
 DAILY_VALUE_ID = 0x8000_0002
 
-#: How many trailing calendar days (oldest..today) the daily block carries.
-DAILY_BARS = 7
+#: Upper bound on the trailing calendar days (oldest..today) the daily block
+#: carries; the server sends min(energy.storage_days, DAILY_MAX).
+DAILY_MAX = 90
 
 # Daily control-frame field layout (each is still ``FRAME_SIZE`` bytes so the
 # stream stays a multiple of 40 and fixed-size slicing keeps working):
 #
 #   header frame (channel_id = DAILY_HEADER_ID)
 #     timestamp_millis      = today as YYYYMMDD  (fits uint32, e.g. 20260909)
-#     voltage_millivolt     = number of day buckets per channel (DAILY_BARS)
+#     voltage_millivolt     = number of day buckets per channel (n <= DAILY_MAX)
 #     current_milliamps     = number of channels in the block
 #     power_milliwatt       = schema version (1)
 #     energy fields         = 0
@@ -76,7 +77,7 @@ DAILY_BARS = 7
 def pack_daily_header(
     today_yyyymmdd: int,
     n_channels: int,
-    n_days: int = DAILY_BARS,
+    n_days: int = DAILY_MAX,
     version: int = 1,
 ) -> bytes:
     """Pack the header frame that starts the one-shot daily-energy block."""

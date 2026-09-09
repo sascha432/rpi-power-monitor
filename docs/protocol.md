@@ -115,7 +115,7 @@ Every published channel carries its own pair of counters:
 
 When a client connects (and passes the server's allowlist), the server sends a
 small block of **reserved control frames** *before* the first sample frame, so
-a dashboard can draw a "last 7 days" daily-consumption chart straight away.
+a dashboard can draw a daily-consumption chart straight away.
 Every frame is still 40 bytes (the stream stays a multiple of 40 and fixed-size
 slicing keeps working). Clients that do not need daily history simply ignore
 frames whose `channel_id` is a reserved id (see the note under "Channel set and
@@ -132,8 +132,10 @@ Reserved `channel_id` values (bit 31 set; never a real rail/aggregate id):
 
 The block = **one header frame**, then **one value frame per (day, channel)**
 in day-major order (day index 0 = oldest ... n-1 = today), where `n` is the
-number of trailing calendar days sent (currently 7). "Today" uses the Pi's
-local date.
+number of trailing calendar days sent. `n = min(energy.storage_days,
+DAILY_MAX)` with `DAILY_MAX = 90`, so a dashboard can show between 7 and 90
+days of daily energy (the browser clamps its own 7-90 setting to what the
+server actually sent). "Today" uses the Pi's local date.
 
 Header frame (`channel_id` = 0x80000001):
 

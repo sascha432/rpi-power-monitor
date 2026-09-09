@@ -59,7 +59,8 @@ sampling:
   # valid conversion times: 140|204|332|588|1100|2116|4156|8244 us
 
 energy:
-  storage_days: 30        # rolling per-day log: days of daily energy kept in state/energy.json
+  storage_days: 90        # rolling per-day log: days of daily energy kept in state/energy.json
+                          # (the dashboard can display 7-90 days of daily energy)
 
 # ---------------------------------------------------------------------------
 # MQTT settings

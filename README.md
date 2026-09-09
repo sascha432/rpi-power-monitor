@@ -13,6 +13,10 @@ on a Raspberry Pi and shows the data on a **web dashboard** in your browser:
   its config/settings catalog (channels, metrics, units, theme) plus live
   readings; the user's UI choices are stored in a browser cookie.
 
+## GUI
+
+![Dashboard UI](docs/images/ui1.png)
+
 ## Layout
 
 ```

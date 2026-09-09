@@ -22,6 +22,29 @@ const PALETTE = {
   light: ["#0277bd", "#ef6c00", "#2e7d32", "#c62828", "#6a1b9a", "#00838f", "#f9a825", "#6d4c41"],
 };
 
+// Default colours per metric (user-selectable in Settings). Metric colours are
+// used for single-metric series (metric tiles, the focused channel graph) and
+// the energy history bars; the dashboard's multi-channel graph keeps per-channel
+// colours so the lines stay distinguishable.
+const METRIC_DEFAULT_COLORS = {
+  voltage_v: "#22c55e", // green
+  current_a: "#eab308", // yellow
+  power_w: "#ec4899", // pink
+  energy: "#3b82f6", // blue
+};
+const CURRENT_UNITS = ["A", "mA"];
+const ENERGY_DAYS_MIN = 7;
+const ENERGY_DAYS_MAX = 90;
+
+// The four dashboard graphs. V/A/P are live time-series of the selected
+// channels; "energy" plots each selected channel's daily totals (Wh).
+const DASH_METRICS = [
+  { key: "voltage_v", label: "Voltage" },
+  { key: "current_a", label: "Current" },
+  { key: "power_w", label: "Power" },
+  { key: "energy", label: "Energy · daily totals" },
+];
+
 // ---- central state ---------------------------------------------------------
 const S = {
   catalog: null,
@@ -32,9 +55,21 @@ const S = {
   channels: [], // ordered ChannelConfig list from the catalog
   meta: {},     // id -> { name,label,kind,metrics,color, v:[],a:[],w:[], last:{...} }
   el: {},       // id -> card DOM refs
-  settings: { metric: "power_w", windowSec: 300, energyUnit: "kWh", theme: "dark", hidden: [] },
+  settings: {
+    metric: "power_w", // graph metric (Power default)
+    theme: "dark", // GUI color mode: dark | light
+    energyUnit: "kWh", // energy unit: Wh | kWh
+    currentUnit: "A", // current unit: A | mA
+    dashWindowSec: 60, // dashboard graph window (1m default)
+    chanWindowSec: 300, // channel graph window (5m default)
+    energyDays: 7, // energy-total bars: ENERGY_DAYS_MIN..ENERGY_DAYS_MAX
+    colors: { ...METRIC_DEFAULT_COLORS },
+    hidden: [],
+    channelMetrics: {}, // channel id -> last chosen graph metric (V/A/P)
+  },
   sig: "",      // chart signature (rebuild when it changes)
-  u: null,      // uPlot instance (Dashboard multi-series chart)
+  dashU: {},    // dashboard graphs: metricKey -> uPlot (4 panels)
+  u: null,      // (legacy single dashboard chart - unused)
   table: null,  // channel focus (single selected channel): { cells, charts, activeId }
   view: { name: "dashboard", id: null }, // active sidebar view
   _piWas: false,
@@ -89,63 +124,96 @@ function applyCatalogDefaults(cat) {
   document.title = cat.title;
   const appTitle = $("appTitle");
   if (appTitle) appTitle.textContent = cat.title;
+  const energyUnits = (cat.energy_units || ["kWh"]).slice();
   const def = {
     metric: cat.default_metric || "power_w",
-    windowSec: 300,
-    energyUnit: cat.energy_unit || "kWh",
     theme: cat.theme || "dark",
+    energyUnit: energyUnits.includes("kWh") ? "kWh" : (energyUnits[0] || "kWh"),
+    currentUnit: "A",
+    dashWindowSec: 60, // dashboard graph window: 1m default
+    chanWindowSec: 300, // channel graph window: 5m default
+    energyDays: 7,
+    colors: { ...METRIC_DEFAULT_COLORS },
     hidden: [],
+    channelMetrics: {},
   };
   const saved = readCookie();
   Object.assign(S.settings, def, saved || {});
-  // validate against the catalog
+  // Merge metric colors with defaults (older cookies lack them), then clamp.
+  S.settings.colors = Object.assign({}, METRIC_DEFAULT_COLORS, S.settings.colors || {});
   if (!(S.settings.metric in (cat.metrics || {}))) S.settings.metric = def.metric;
-  if (!(cat.energy_units || []).includes(S.settings.energyUnit)) S.settings.energyUnit = def.energyUnit;
   if (!(cat.themes || []).includes(S.settings.theme)) S.settings.theme = def.theme;
+  if (!(cat.energy_units || []).includes(S.settings.energyUnit)) S.settings.energyUnit = def.energyUnit;
+  if (!CURRENT_UNITS.includes(S.settings.currentUnit)) S.settings.currentUnit = def.currentUnit;
+  S.settings.dashWindowSec = clampWindow(S.settings.dashWindowSec, def.dashWindowSec);
+  S.settings.chanWindowSec = clampWindow(S.settings.chanWindowSec, def.chanWindowSec);
+  S.settings.energyDays = clampInt(S.settings.energyDays, ENERGY_DAYS_MIN, ENERGY_DAYS_MAX, def.energyDays);
   S.settings.hidden = (S.settings.hidden || []).filter((h) =>
     (cat.channels || []).some((c) => c.id === h)
   );
+  // Keep per-channel metric memories that are still valid for that channel
+  // kind (aggregates only support power).
+  const memories = {};
+  (cat.channels || []).forEach((ch) => {
+    const mem = (S.settings.channelMetrics || {})[ch.id];
+    const allowed = (ch.metrics && ch.metrics.length) ? ch.metrics
+      : (ch.kind === "aggregate" ? ["power_w"] : ["power_w", "voltage_v", "current_a"]);
+    if (mem && allowed.includes(mem)) memories[ch.id] = mem;
+  });
+  S.settings.channelMetrics = memories;
   writeCookie();
 }
 
-function populateToolbar() {
-  const cat = S.catalog;
-  const selM = $("selMetric");
-  selM.innerHTML = "";
-  Object.keys(cat.metrics).forEach((key) => {
-    const meta = cat.metrics[key];
-    const opt = document.createElement("option");
-    opt.value = key;
-    opt.textContent = meta.label + " (" + meta.unit + ")";
-    selM.appendChild(opt);
-  });
-  selM.value = S.settings.metric;
+function clampWindow(v, fallback) {
+  v = Number(v);
+  return WINDOWS.includes(v) ? v : fallback;
+}
+function clampInt(v, lo, hi, fallback) {
+  v = parseInt(v, 10);
+  if (Number.isNaN(v)) return fallback;
+  return Math.min(hi, Math.max(lo, v));
+}
+// Colour used for a single-metric series / the energy history chart.
+function metricColor(key) {
+  return (S.settings.colors && S.settings.colors[key]) || METRIC_DEFAULT_COLORS[key] || "#888888";
+}
 
-  const selW = $("selWindow");
-  selW.innerHTML = "";
-  WINDOWS.forEach((s) => {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = WINDOW_LABEL(s);
-    selW.appendChild(opt);
-  });
-  selW.value = String(S.settings.windowSec);
+// Metrics a given channel can actually plot (aggregates: power only).
+function channelAllowedMetrics(ch) {
+  if (!ch) return ["power_w"];
+  const list = (ch.metrics && ch.metrics.length) ? ch.metrics : [];
+  if (list.length) return list;
+  return ch.kind === "aggregate" ? ["power_w"] : ["power_w", "voltage_v", "current_a"];
+}
 
-  const selE = $("selEnergy");
-  selE.innerHTML = "";
-  cat.energy_units.forEach((u) => {
-    const opt = document.createElement("option");
-    opt.value = u;
-    opt.textContent = u;
-    selE.appendChild(opt);
-  });
-  selE.value = S.settings.energyUnit;
+// Best metric for a channel: its remembered one if valid, else the current
+// dashboard metric if valid for that channel, else power.
+function channelMetricFor(id) {
+  const ch = (S.channels || []).find((c) => c.id === id);
+  if (!ch) return "power_w";
+  const allowed = channelAllowedMetrics(ch);
+  const mem = (S.settings.channelMetrics || {})[id];
+  if (mem && allowed.includes(mem)) return mem;
+  if (allowed.includes(S.settings.metric)) return S.settings.metric;
+  return allowed.includes("power_w") ? "power_w" : (allowed[0] || "power_w");
+}
+
+// Metric currently graphed: per-channel while a channel is focused, otherwise
+// the dashboard metric chosen in Settings.
+function currentMetric() {
+  if (S.view.name === "channel" && S.activeChannelMetric) return S.activeChannelMetric;
+  return S.settings.metric;
+}
+
+// Remember the metric the user last used for ``id`` (persisted in the cookie).
+function rememberChannelMetric(id, key) {
+  if (!S.settings.channelMetrics) S.settings.channelMetrics = {};
+  S.settings.channelMetrics[id] = key;
+  writeCookie();
 }
 
 function applyTheme() {
   document.documentElement.dataset.theme = S.settings.theme;
-  const other = (S.catalog.themes || []).find((t) => t !== S.settings.theme);
-  $("btnTheme").textContent = other ? other[0].toUpperCase() + other.slice(1) + " mode" : "Theme";
 }
 
 // ---- cards ------------------------------------------------------------------
@@ -227,9 +295,15 @@ function updateCardEls(ref, meta) {
   }
   ref.total.textContent = fmtEnergy(last.t || 0);
 }
+// Format current honouring the user's current unit (A default | mA).
 function fmtA(a) {
-  const x = Math.abs(a);
-  return x < 0.1 ? a.toFixed(3) + " A" : a.toFixed(2) + " A";
+  const v = S.settings.currentUnit === "mA" ? a * 1000 : a;
+  if (S.settings.currentUnit === "mA") {
+    const x = Math.abs(v);
+    return (x < 100 ? v.toFixed(1) : String(Math.round(v))) + " mA";
+  }
+  const x = Math.abs(v);
+  return x < 0.1 ? v.toFixed(3) + " A" : v.toFixed(2) + " A";
 }
 function metricUnit(key) {
   const m = (S.catalog && S.catalog.metrics) ? S.catalog.metrics[key] : null;
@@ -247,8 +321,9 @@ function fmtMetricVal(key, raw) {
     return { num, unit: "W" };
   }
   if (key === "current_a") {
-    const a = Math.abs(raw);
-    return { num: a < 0.1 ? raw.toFixed(3) : raw.toFixed(2), unit: "A" };
+    const s = fmtA(raw);
+    const sp = s.lastIndexOf(" ");
+    return { num: s.slice(0, sp), unit: s.slice(sp + 1) };
   }
   if (key === "voltage_v") return { num: raw.toFixed(2), unit: "V" };
   return { num: Number(raw).toFixed(2), unit: metricUnit(key) };
@@ -256,7 +331,7 @@ function fmtMetricVal(key, raw) {
 // Update the focused channel: big value stat, and every metric-tile readout.
 function updateCellEls(cell, meta) {
   if (!cell || !meta) return;
-  const key = S.settings.metric;
+  const key = currentMetric();
   const last = meta.last || {};
   const raw = key in ARR ? last[ARR[key]] : last.w;
   const fmt = fmtMetricVal(key, raw);
@@ -272,20 +347,20 @@ function updateCellEls(cell, meta) {
 function buildNav() {
   const wrap = $("navChannels");
   wrap.innerHTML = "";
-  S.channels.forEach((ch, i) => {
+  S.channels.forEach((ch) => {
+    // Sidebar shows a short name (drop a trailing " (total)" from aggregate
+    // labels); the full label is still used on cards/detail headers.
+    const short = String(ch.label || ch.name).replace(/\s*\(total\)\s*$/i, "");
     const b = document.createElement("button");
     b.type = "button";
     b.className = "nav-item nav-channel";
     b.dataset.view = "channel";
     b.dataset.channel = ch.id;
     b.title = "Show " + (ch.label || ch.name);
-    const num = document.createElement("span");
-    num.className = "nav-num";
-    num.textContent = i + 1;
     const label = document.createElement("span");
     label.className = "nav-label";
-    label.textContent = ch.label || ch.name;
-    b.append(num, label);
+    label.textContent = short;
+    b.append(label);
     b.addEventListener("click", () => setView("channel", ch.id));
     const li = document.createElement("li");
     li.appendChild(b);
@@ -300,8 +375,6 @@ function setShown(el, on) {
 
 function applyViewVisibility() {
   const v = S.view.name;
-  const withChart = v === "dashboard" || v === "channel";
-  setShown($("toolbar"), withChart);
   setShown($("cards"), v === "dashboard");
   setShown($("channelView"), v === "channel");
   setShown($("chartBox"), v === "dashboard"); // channel charts live in #channelFocus
@@ -382,7 +455,7 @@ function buildFocusCell(ch) {
   const el = document.createElement("article");
   el.className = "tcell";
   el.dataset.id = ch.id;
-  const activeKey = S.settings.metric;
+  const activeKey = currentMetric();
   const tilesHtml = metricTileKeys(meta.kind)
     .map((key) => {
       const on = key === activeKey ? " is-active" : "";
@@ -416,9 +489,9 @@ function buildFocusCell(ch) {
     cell.tiles[key] = { key, root: t, value: t.querySelector(".mt-value"), plot: t.querySelector(".mt-plot"), chart: null };
     if (key !== "energy") t.addEventListener("click", () => selectTileMetric(key));
   });
-  // Energy tile hosts the 7-day bar strip instead of a sparkline.
+  // Energy tile hosts the N-day daily-consumption bar strip.
   cell.barsEl = el.querySelector(".mt-bars") || null;
-  if (cell.barsEl) buildEnergyBars(cell.barsEl);
+  cell.barsN = 0;
   return cell;
 }
 
@@ -427,10 +500,9 @@ function buildFocusCell(ch) {
 // tiles stay minimal sparklines (no axes/legend).
 function makeFocusPlot(box, meta, metricKey, big) {
   if (!box) return null;
-  const pal = PALETTE[S.settings.theme] || PALETTE.dark;
   const width = Math.max(big ? 320 : 120, box.clientWidth || (big ? 640 : 200));
   const height = big ? 320 : 56;
-  const color = metricKey === "energy" ? cssVar("--muted") : (meta.color || pal[0]);
+  const color = metricColor(metricKey === "energy" ? "energy" : metricKey);
 
   const opts = {
     width,
@@ -479,13 +551,15 @@ function buildChannelFocus(activeId) {
   teardownTable();
   const ch = S.channels.find((c) => c.id === activeId);
   if (!ch) return;
+  S.activeChannelMetric = channelMetricFor(activeId);
   const cell = buildFocusCell(ch);
   $("channelFocus").appendChild(cell.root);
-  // Main (hero) chart follows the toolbar metric selector.
-  const mainU = makeFocusPlot(cell.box, cell.meta, S.settings.metric, true);
+  // Main (hero) chart shows this channel's metric: remembered per channel,
+  // falling back to power for aggregates / the dashboard metric for rails.
+  const mainU = makeFocusPlot(cell.box, cell.meta, currentMetric(), true);
   cell.chart = mainU;
   cell.charts.push(mainU);
-  // A mini sparkline for every metric tile (incl. the cumulative Energy tile).
+  // A mini sparkline for every chartable metric tile (not the Energy tile).
   Object.keys(cell.tiles).forEach((key) => {
     const t = cell.tiles[key];
     if (!t.plot) return;
@@ -495,22 +569,25 @@ function buildChannelFocus(activeId) {
   });
   S.table = { cells: { [ch.id]: cell }, charts: cell.charts, activeId };
   renderCard(ch.id); // populate the hero overlay + every tile readout
-  renderEnergyBars(cell); // 7-day daily-consumption bars on the Energy tile
+  renderEnergyBars(cell); // N-day daily-consumption bars in the Energy tile
   syncTable();
 }
 
-// A metric tile becomes the big main graph (mirrors the toolbar Metric select).
+// A metric tile becomes this channel's big main graph; the choice is stored
+// per channel (aggregates only offer power, so V/A tile clicks are ignored).
 function selectTileMetric(key) {
-  if (!key || key === "energy" || S.settings.metric === key) return;
-  S.settings.metric = key;
-  writeCookie();
-  const sel = $("selMetric");
-  if (sel) sel.value = key;
+  if (!key || key === "energy" || S.view.name !== "channel") return;
+  const ch = (S.channels || []).find((c) => c.id === S.view.id);
+  if (!ch || !channelAllowedMetrics(ch).includes(key)) return;
+  if (S.activeChannelMetric === key) return;
+  S.activeChannelMetric = key;
+  rememberChannelMetric(ch.id, key);
   S.sig = "";
   renderChart();
 }
 
 function destroyChart() {
+  destroyDash(); // dashboard's four graphs
   if (S.u) { try { S.u.destroy(); } catch (_e) {} S.u = null; }
   S.sig = "";
 }
@@ -534,6 +611,7 @@ function setView(name, id) {
     S.channels.forEach((ch) => updateCardEls(S.el[ch.id], S.meta[ch.id]));
   } else if (name === "settings") {
     destroyChart();
+    populateSettings(); // reflect current values (e.g. a tile-clicked metric)
     return; // the settings view has no chart
   }
   S.sig = "";
@@ -544,7 +622,8 @@ function wireNav() {
   $("navDashboard").addEventListener("click", () => setView("dashboard"));
   $("navSettings").addEventListener("click", () => setView("settings"));
   $("btnBack").addEventListener("click", () => setView("dashboard"));
-  $("btnResetS").addEventListener("click", () => { clearCookie(); location.reload(); });
+  const navToggle = $("navToggle");
+  if (navToggle) navToggle.addEventListener("click", () => setNavOpen(!navOpen()));
 }
 
 // ---- connection / websocket -----------------------------------------------------
@@ -593,10 +672,11 @@ function handle(msg) {
 
 function onHello(msg) {
   applyCatalogDefaults(msg.catalog);
-  populateToolbar();
   applyTheme();
   createCards();
   buildNav();
+  buildSettings(); // populate the Settings page form from the catalog
+  populateSettings();
   S.view = { name: "dashboard", id: null };
   setView("dashboard"); // build the sidebar and show the default dashboard view
   // reflect the Pi connection state carried by hello
@@ -611,12 +691,12 @@ function onHistory(history) {
   renderChart();
 }
 
-// ---- daily energy (last-7-days bars on the read-only Energy tile) ---------
-// The server pushes a one-shot daily block once per Pi connection. The first
-// six values are completed calendar days; the last is today's Wh at block
-// build, paired with ``anchor`` = the all-time total at that same instant.
-// The today bar is then kept live as base + (last.t - anchor), using the
-// cumulative total that already streams in every sample.
+// ---- daily energy (N-day history on the focused channel) --------------------
+// The server pushes a one-shot daily block once per Pi connection. ``vals`` is
+// a Wh array, oldest -> today (today = the value at block build), paired with
+// ``anchor`` = the all-time total at that same instant. Today's value is kept
+// live as base + (last.t - anchor), using the cumulative total that already
+// streams in every sample, so the last bar grows without re-fetching.
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function onDaily(msg) {
@@ -628,9 +708,10 @@ function onDaily(msg) {
     if (!m) return;
     const d = days ? days[String(ch.id)] : null;
     if (d && Array.isArray(d.vals) && d.vals.length) {
+      const vals = d.vals.map((v) => Number(v) || 0);
       m.daily = {
-        prev: d.vals.slice(0, -1), // completed days, oldest -> yesterday
-        base: d.vals[d.vals.length - 1] || 0, // today's Wh at block build
+        vals, // full Wh history, oldest -> today(base)
+        base: vals[vals.length - 1] || 0,
         anchor: typeof d.anchor === "number" ? d.anchor : null,
         today,
       };
@@ -639,6 +720,7 @@ function onDaily(msg) {
     }
   });
   renderEnergyBarsActive();
+  if (S.view.name === "dashboard") { S.sig = ""; renderChart(); } // rebuild energy panel
 }
 
 // Live Wh consumed today: today's base + the streamed total delta since the
@@ -651,63 +733,86 @@ function todayLiveWh(m) {
   return d.base + (nowT - anchor);
 }
 
-// Weekday + readable date for the bar ``daysAgo`` before the (Pi-local) iso.
-function dateForBar(iso, daysAgo) {
+// Date + weekday + short M/D for a bar ``daysAgo`` before the (Pi-local) iso.
+function dateAt(iso, daysAgo) {
   const parts = String(iso || "").split("-").map(Number);
   const base = parts.length === 3 && parts.every(Number.isFinite)
     ? new Date(parts[0], parts[1] - 1, parts[2])
     : new Date();
   base.setDate(base.getDate() - daysAgo);
-  return { wd: WEEKDAYS[base.getDay()] || "", date: base.toDateString() };
+  const wd = WEEKDAYS[base.getDay()] || "";
+  return { wd, date: base.toDateString(), md: (base.getMonth() + 1) + "/" + base.getDate() };
 }
 
-// Create the 7 bar slots once per Energy-tile build.
-function buildEnergyBars(container) {
-  if (!container || container.childElementCount) return;
-  for (let i = 0; i < 7; i++) {
+// Which bars to show: the last ``settings.energyDays`` days of the received
+// history (clamped to the ENERGY_DAYS_MAX / what the server actually sent),
+// oldest -> today, where today is the live value.
+function energyHistory(cell) {
+  const meta = cell && cell.meta;
+  const d = meta && meta.daily;
+  if (!d || !Array.isArray(d.vals) || !d.vals.length) return null;
+  const want = clampInt(S.settings.energyDays, ENERGY_DAYS_MIN, ENERGY_DAYS_MAX, ENERGY_DAYS_MIN);
+  const n = Math.min(want, d.vals.length);
+  const start = d.vals.length - n;
+  const bars = [];
+  for (let j = start; j <= d.vals.length - 2; j++) {
+    bars.push({ val: d.vals[j] || 0, daysAgo: d.vals.length - 1 - j });
+  }
+  bars.push({ val: Math.max(0, todayLiveWh(meta)), daysAgo: 0 }); // today (live)
+  return { n, today: d.today, bars };
+}
+
+// Build the N bar slots of the Energy-total tile (rebuilt only when N changes).
+function buildTileBars(box, n, color) {
+  box.innerHTML = "";
+  for (let i = 0; i < n; i++) {
     const bar = document.createElement("span");
     bar.className = "bar";
-    bar.append(document.createElement("i"), document.createElement("b"));
-    container.appendChild(bar);
+    const fill = document.createElement("i");
+    fill.style.background = color;
+    const lab = document.createElement("b");
+    bar.append(fill, lab);
+    box.appendChild(bar);
   }
 }
 
-// Refresh the bar strip of one channel cell from its stored daily data.
+// Refresh the N-day bar strip inside the Energy total tile of one channel cell.
 function renderEnergyBars(cell) {
   const meta = cell && cell.meta;
   const box = cell && cell.barsEl;
   if (!meta || !box) return;
-  const bars = Array.from(box.children);
-  const daily = meta.daily;
-  if (!daily || !bars.length) {
-    bars.forEach((b) => {
-      b.classList.remove("today");
-      b.title = "";
-      const i = b.querySelector("i");
-      if (i) i.style.height = "2px";
-    });
+  const H = energyHistory(cell);
+  if (!H) {
+    box.innerHTML = "";
+    if (cell) cell.barsN = 0;
     return;
   }
-  // 7 values oldest -> today (today clamped at 0 for display; tooltip is exact)
-  const values = daily.prev.concat([Math.max(0, todayLiveWh(meta))]);
-  const peak = values.reduce((hi, v) => (v > hi ? v : hi), 0) || 1;
-  const lastIdx = values.length - 1;
+  const color = metricColor("energy");
+  if (!box.childElementCount || cell.barsN !== H.bars.length) {
+    buildTileBars(box, H.bars.length, color);
+    cell.barsN = H.bars.length;
+  }
+  const bars = Array.from(box.children);
+  const peak = H.bars.reduce((hi, b) => (b.val > hi ? b.val : hi), 0) || 1;
+  const barH = Math.max(24, box.clientHeight || 56);
+  const showLabels = H.bars.length <= 7; // single-letter weekday labels fit ~7
+  const lastIdx = bars.length - 1;
   bars.forEach((bar, i) => {
-    const raw = values[i] || 0;
+    const b = H.bars[i];
     const fill = bar.querySelector("i");
-    if (fill.style.background !== meta.color) fill.style.background = meta.color;
-    // Leave room at the bottom of each column for the weekday label.
-    const avail = Math.max(4, bar.clientHeight - 13);
-    fill.style.height = Math.max(2, Math.min(avail, (raw / peak) * avail)) + "px";
-    bar.classList.toggle("today", i === lastIdx);
-    const barDate = dateForBar(daily.today, lastIdx - i);
     const lab = bar.querySelector("b");
-    if (lab) lab.textContent = barDate.wd;
-    bar.title = barDate.date + " · " + fmtEnergy(raw);
+    if (fill) {
+      fill.style.background = color;
+      fill.style.height = Math.max(2, (Math.max(0, b.val) / peak) * (barH - 10)) + "px";
+    }
+    bar.classList.toggle("today", i === lastIdx);
+    const dt = dateAt(H.today, b.daysAgo);
+    if (lab) lab.textContent = showLabels ? dt.wd : "";
+    bar.title = dt.date + " · " + fmtEnergy(Math.max(0, b.val));
   });
 }
 
-// Re-render bars for whichever channel cell is on screen (if any).
+// Re-render the energy bars of whichever channel cell is on screen (if any).
 function renderEnergyBarsActive() {
   if (S.view.name === "channel" && S.table && S.table.cells) {
     Object.keys(S.table.cells).forEach((id) => renderEnergyBars(S.table.cells[id]));
@@ -798,7 +903,8 @@ function onSample(msg) {
   S.timeline.push(S.lastSample);
   trim();
 
-  $("ageText").textContent = "age " + ageText() + "s";
+  const ageEl = $("ageText");
+  if (ageEl) ageEl.textContent = "age " + ageText() + "s";
   updatePill();
   renderChart();
 }
@@ -843,37 +949,243 @@ function chartActive() {
   return S.view.name === "dashboard" || S.view.name === "channel";
 }
 
-function visibleForMetric() {
-  const m = S.settings.metric;
-  return S.channels.filter((ch) => !S.settings.hidden.includes(ch.id) && ch.metrics.includes(m));
+// --- dashboard: four graphs (voltage / current / power / energy-daily) ---------
+// Each graph plots only the channels whose card "Show on chart" toggle is on.
+function dashSelectedIds() {
+  return S.channels.filter((ch) => !S.settings.hidden.includes(ch.id)).map((ch) => ch.id).sort();
 }
-
-function chartChannels() {
-  // Dashboard plots every visible channel; a channel view plots just that one
-  // (ignoring the plot-toggle so the focused channel is always shown).
-  if (S.view.name === "channel") {
-    return S.channels.filter((ch) => ch.id === S.view.id);
-  }
-  return visibleForMetric();
-}
-
-function buildChartData() {
-  const m = S.settings.metric;
-  const arrName = ARR[m] || "w";
-  const data = [S.timeline];
-  const ids = [];
-  chartChannels().forEach((ch) => {
-    ids.push(ch.id);
-    data.push(S.meta[ch.id][arrName]);
+function dashChannelsFor(metricKey) {
+  return S.channels.filter((ch) => {
+    if (S.settings.hidden.includes(ch.id)) return false;
+    if (metricKey === "energy") return true; // rails + aggregates have energy
+    return (ch.metrics || []).includes(metricKey); // V/A are rails-only
   });
-  return { ids, data };
+}
+function dashSig() {
+  return S.settings.theme + "|" + S.settings.energyDays + "|" + dashSelectedIds().join(",");
+}
+
+function destroyDash() {
+  Object.keys(S.dashU || {}).forEach((k) => {
+    const u = S.dashU[k];
+    if (u) { try { u.destroy(); } catch (_e) {} }
+  });
+  S.dashU = {};
+  const host = $("dashGraphs");
+  if (host) host.innerHTML = "";
+}
+
+// Time-series columns for one metric: shared timeline + one series per shown
+// channel that publishes that metric.
+function dashTimeData(metricKey) {
+  const arrName = ARR[metricKey] || "w";
+  const data = [S.timeline];
+  dashChannelsFor(metricKey).forEach((ch) => data.push(S.meta[ch.id][arrName] || []));
+  return data;
+}
+
+// Daily totals for the energy BAR graph: the last ``energyDays`` days, today
+// live-updated, one series per selected channel. Returns
+// { n, xs, last, series:[{key,color,vals}] } or null until daily data arrives.
+function dashEnergySummary() {
+  const all = dashChannelsFor("energy");
+  const withDaily = all.filter((ch) => {
+    const d = S.meta[ch.id] && S.meta[ch.id].daily;
+    return d && Array.isArray(d.vals) && d.vals.length;
+  });
+  if (!withDaily.length) return null;
+  const want = clampInt(S.settings.energyDays, ENERGY_DAYS_MIN, ENERGY_DAYS_MAX, ENERGY_DAYS_MIN);
+  const n = Math.min(want, Math.min.apply(null, withDaily.map((ch) => S.meta[ch.id].daily.vals.length)));
+  const first = S.meta[withDaily[0].id].daily;
+  const parts = String(first.today || "").split("-").map(Number);
+  const last = parts.length === 3 ? (Date.UTC(parts[0], parts[1] - 1, parts[2]) / 1000) : (Date.now() / 1000);
+  const xs = [];
+  for (let i = n - 1; i >= 0; i--) xs.push(last - i * 86400);
+  const pal = PALETTE[S.settings.theme] || PALETTE.dark;
+  const series = all.map((ch) => {
+    const m = S.meta[ch.id];
+    const d = m && m.daily;
+    let vals;
+    if (d && Array.isArray(d.vals) && d.vals.length >= n) {
+      vals = d.vals.slice(d.vals.length - n, d.vals.length - 1);
+      vals.push(todayLiveWh(m)); // live today replaces the stored base
+    } else {
+      vals = new Array(n).fill(0);
+    }
+    return { key: ch.id, color: pal[channelIndexFor(ch) % pal.length], vals };
+  });
+  return { n, xs, last, series };
+}
+
+// (Re)build the DOM grouped-bar chart in the energy dashboard panel. Each day
+// is one group with a coloured bar per selected channel.
+function buildDashEnergyBars(panel) {
+  const box = panel && panel.querySelector(".dg-plot");
+  if (!box) return;
+  box.innerHTML = "";
+  box.__dgb = null;
+  const sum = dashEnergySummary();
+  if (!sum) {
+    box.innerHTML = '<div class="dgb-empty">waiting for energy history…</div>';
+    return;
+  }
+  const tickEvery = Math.max(1, Math.ceil(sum.n / 8)); // ~8 axis labels
+  const wrap = document.createElement("div");
+  wrap.className = "dgb";
+  for (let i = 0; i < sum.n; i++) {
+    const day = document.createElement("div");
+    day.className = "dgb-day";
+    const bars = document.createElement("div");
+    bars.className = "dgb-bars";
+    sum.series.forEach(() => bars.appendChild(document.createElement("i")));
+    const lab = document.createElement("b");
+    const show = i === 0 || i === sum.n - 1 || i === sum.n - 2 || (i % tickEvery) === 0;
+    if (show) {
+      const dt = new Date(sum.xs[i] * 1000);
+      lab.textContent = (dt.getUTCMonth() + 1) + "/" + dt.getUTCDate();
+    }
+    day.append(bars, lab);
+    wrap.appendChild(day);
+  }
+  box.appendChild(wrap);
+  box.__dgb = { n: sum.n, cols: sum.series.length };
+  updateDashEnergyBars();
+}
+
+// Refresh the grouped-bar heights (today's group grows live; rebuild when N or
+// the selected-channel count changed since the panel was built).
+function updateDashEnergyBars() {
+  const host = $("dashGraphs");
+  if (!host) return;
+  const panel = host.querySelector('.dash-panel[data-metric="energy"]');
+  const box = panel && panel.querySelector(".dg-plot");
+  if (!box) return;
+  const sum = dashEnergySummary();
+  if (!sum) return; // nothing yet - the placeholder stays until daily data lands
+  if (!box.__dgb || box.__dgb.n !== sum.n || box.__dgb.cols !== sum.series.length) {
+    buildDashEnergyBars(panel);
+    return;
+  }
+  const peak = sum.series.reduce((hi, s) => Math.max(hi, Math.max.apply(null, s.vals)), 0) || 1;
+  const area = box.querySelector(".dgb-bars");
+  const areaH = area ? Math.max(10, area.clientHeight || 150) : 150;
+  const days = Array.from(box.querySelectorAll(".dgb-day"));
+  days.forEach((day, di) => {
+    const bars = day.querySelectorAll(".dgb-bars i");
+    sum.series.forEach((s, ci) => {
+      const v = Math.max(0, s.vals[di] || 0);
+      const el = bars[ci];
+      if (el) {
+        el.style.background = s.color;
+        el.style.height = Math.max(2, (v / peak) * (areaH - 4)) + "px";
+      }
+    });
+    day.classList.toggle("today", di === sum.n - 1);
+  });
+}
+
+function metricLabelUnit(key) {
+  if (key === "energy") return "Wh · day";
+  if (key === "current_a") return "Current (" + S.settings.currentUnit + ")";
+  const mm = (S.catalog && S.catalog.metrics && S.catalog.metrics[key]) || null;
+  return mm ? mm.label + " (" + mm.unit + ")" : key;
+}
+
+function channelIndexFor(ch) {
+  return Math.max(0, S.channels.findIndex((c) => c.id === ch.id));
+}
+
+function buildDashGraphs() {
+  destroyDash();
+  const host = $("dashGraphs");
+  if (!host) return;
+  DASH_METRICS.forEach((m) => {
+    const panel = document.createElement("div");
+    panel.className = "dash-panel";
+    panel.dataset.metric = m.key;
+    panel.innerHTML =
+      `<div class="dg-head"><span class="dg-title">${m.label}</span><span class="dg-sub"></span></div>` +
+      `<div class="dg-wrap"><div class="dg-plot"></div></div>`;
+    host.appendChild(panel);
+    S.dashU[m.key] = null;
+  });
+  // Build each plot only after every panel is in the DOM (width must be known).
+  DASH_METRICS.forEach((m) => {
+    const panel = host.querySelector('.dash-panel[data-metric="' + m.key + '"]');
+    S.dashU[m.key] = makeDashPlot(m, panel);
+  });
+  updateDashGraphs();
+}
+
+function makeDashPlot(m, panel) {
+  if (!panel) return null;
+  const chs = dashChannelsFor(m.key);
+  const box = panel.querySelector(".dg-plot");
+  const sub = panel.querySelector(".dg-sub");
+  if (!box) return null;
+  const pal = PALETTE[S.settings.theme] || PALETTE.dark;
+  if (sub && chs.length) {
+    sub.innerHTML = chs.map((ch) => {
+      const color = pal[channelIndexFor(ch) % pal.length];
+      return `<span class="dg-chip"><i style="background:${color}"></i>${escapeHtml(ch.label || ch.name)}</span>`;
+    }).join("");
+  } else if (sub) {
+    sub.textContent = "no channels selected";
+  }
+  // Energy-daily is a grouped BAR chart (not a time-series line chart).
+  if (m.key === "energy") {
+    buildDashEnergyBars(panel);
+    return null;
+  }
+  if (!chs.length) return null;
+  const width = Math.max(240, box.clientWidth || 320);
+  const height = 210;
+  const axis = cssVar("--axis");
+  const grid = cssVar("--grid");
+  const series = [{ label: "time" }];
+  chs.forEach((ch) => {
+    series.push({
+      label: ch.label || ch.name,
+      stroke: pal[channelIndexFor(ch) % pal.length],
+      width: 1.6,
+      points: { show: false },
+      value: (u, v) => fmtLegend(m.key, v),
+    });
+  });
+  return new uPlot({
+    width,
+    height,
+    legend: { show: false },
+    scales: { x: { time: true }, y: { auto: true } },
+    cursor: { x: true, y: true },
+    axes: [
+      { stroke: axis, grid: { stroke: grid }, ticks: { stroke: axis } },
+      { stroke: axis, grid: { stroke: grid }, ticks: { stroke: axis }, label: metricLabelUnit(m.key), size: 46 },
+    ],
+    series,
+  }, dashTimeData(m.key), box);
+}
+
+// Refresh the four dashboard graphs: the V/A/P time-series (dashboard window)
+// and the energy grouped-bar chart (live today group).
+function updateDashGraphs() {
+  if (!chartActive() || S.view.name !== "dashboard") return;
+  const now = S.lastSample || Date.now() / 1000;
+  DASH_METRICS.forEach((m) => {
+    if (m.key === "energy") { updateDashEnergyBars(); return; }
+    const u = S.dashU && S.dashU[m.key];
+    if (!u) return;
+    u.setData(dashTimeData(m.key));
+    u.setScale("x", { min: now - curWindowSec(), max: now + 0.5 });
+  });
 }
 
 function renderChart() {
   if (!S.catalog || !chartActive()) return; // no catalog yet / chart hidden on settings
   if (S.view.name === "channel") {
-    // Single focus chart: rebuild when metric/theme/focused channel change.
-    const sig = S.settings.metric + "|" + S.settings.theme + "|" + S.view.id;
+    // Single focus chart: rebuild when this channel's metric/theme change.
+    S.activeChannelMetric = channelMetricFor(S.view.id);
+    const sig = currentMetric() + "|" + S.settings.theme + "|" + S.view.id;
     if (sig !== S.sig) {
       buildChannelFocus(S.view.id);
       S.sig = sig;
@@ -882,65 +1194,17 @@ function renderChart() {
     }
     return;
   }
-  const { ids, data } = buildChartData();
-  const sig = S.settings.metric + "|" + S.settings.theme + "|" + ids.join(",");
-  if (sig !== S.sig) {
-    buildChart(ids, data);
-    S.sig = sig;
-  } else if (S.u) {
-    S.u.setData(data);
-    scrollWindow();
+  // Dashboard: four graphs (V / A / P time-series + energy daily totals).
+  if (dashSig() !== S.sig) {
+    buildDashGraphs();
+    S.sig = dashSig();
+  } else {
+    updateDashGraphs();
   }
 }
 
-function buildChart(ids, data) {
-  if (S.u) { try { S.u.destroy(); } catch (_e) {} S.u = null; }
-  const cat = S.catalog;
-  const m = cat.metrics[S.settings.metric];
-  const pal = PALETTE[S.settings.theme] || PALETTE.dark;
-  const colorOf = {};
-  S.channels.forEach((ch, i) => { colorOf[ch.id] = pal[i % pal.length]; });
-
-  const series = [{ label: "time" }];
-  ids.forEach((id) => {
-    const chMeta = S.meta[id];
-    series.push({ label: chMeta.label, stroke: colorOf[id], width: 1.6 });
-  });
-
-  const box = $("chart");
-  const width = Math.max(320, box.clientWidth || 600);
-  const axisColor = cssVar("--axis");
-  const gridColor = cssVar("--grid");
-
-  S.u = new uPlot(
-    {
-      width,
-      height: 320,
-      legend: { show: true },
-      scales: { x: { time: true }, y: { auto: true } },
-      axes: [
-        { stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: axisColor } },
-        {
-          stroke: axisColor,
-          grid: { show: false },
-          ticks: { stroke: axisColor },
-          label: m ? m.label + " (" + m.unit + ")" : "",
-          size: 56,
-        },
-      ],
-      series,
-      cursor: { x: true, y: true },
-    },
-    data,
-    box
-  );
-  scrollWindow();
-}
-
-function scrollWindow() {
-  if (!S.u) return;
-  const now = S.lastSample || Date.now() / 1000;
-  S.u.setScale("x", { min: now - S.settings.windowSec, max: now + 0.5 });
+function curWindowSec() {
+  return (S.view.name === "dashboard" ? S.settings.dashWindowSec : S.settings.chanWindowSec) || 300;
 }
 
 // Push the latest buffered points into the main chart and every metric tile.
@@ -949,9 +1213,9 @@ function syncTable() {
   Object.keys(S.table.cells).forEach((id) => {
     const cell = S.table.cells[id];
     const now = S.lastSample || Date.now() / 1000;
-    const range = { min: now - S.settings.windowSec, max: now + 0.5 };
+    const range = { min: now - curWindowSec(), max: now + 0.5 };
     if (cell.chart) {
-      cell.chart.setData([S.timeline, bufferForMetric(cell.meta, S.settings.metric)]);
+      cell.chart.setData([S.timeline, bufferForMetric(cell.meta, currentMetric())]);
       cell.chart.setScale("x", range);
     }
     Object.keys(cell.tiles || {}).forEach((key) => {
@@ -971,7 +1235,7 @@ function scrollAllCharts() {
     Object.keys(S.table.cells).forEach((id) => {
       const cell = S.table.cells[id];
       const now = S.lastSample || Date.now() / 1000;
-      const range = { min: now - S.settings.windowSec, max: now + 0.5 };
+      const range = { min: now - curWindowSec(), max: now + 0.5 };
       if (cell.chart) cell.chart.setScale("x", range);
       Object.keys(cell.tiles || {}).forEach((key) => {
         const u = cell.tiles[key].chart;
@@ -979,58 +1243,218 @@ function scrollAllCharts() {
       });
     });
   } else {
-    scrollWindow();
+    updateDashGraphs(); // dashboard graphs follow the dashboard window
   }
 }
 
+// ---- sidebar collapse / layout ------------------------------------------------
+// The whole sidebar can collapse to a single fixed menu icon at the top-left
+// (body gets .nav-closed); re-fit any live chart to the new main width.
+function fitCharts() {
+  if (S.view.name === "channel" && S.table) {
+    Object.keys(S.table.cells).forEach((id) => {
+      const cell = S.table.cells[id];
+      if (cell.chart && cell.box) {
+        cell.chart.setSize({ width: Math.max(320, cell.box.clientWidth || 640), height: 300 });
+      }
+      Object.keys(cell.tiles || {}).forEach((key) => {
+        const t = cell.tiles[key];
+        if (t.chart && t.plot) {
+          t.chart.setSize({ width: Math.max(120, t.plot.clientWidth || 200), height: 56 });
+        }
+      });
+      renderEnergyBars(cell);
+    });
+  } else if (chartActive() && S.dashU) {
+    // Re-fit every dashboard graph to its panel's current width.
+    Object.keys(S.dashU).forEach((k) => {
+      const u = S.dashU[k];
+      if (!u) return;
+      const box = document.querySelector('.dash-panel[data-metric="' + k + '"] .dg-plot');
+      if (box) {
+        const h = k === "energy" ? 200 : 210;
+        u.setSize({ width: Math.max(240, box.clientWidth || 320), height: h });
+      }
+    });
+  }
+}
+
+function navOpen() {
+  return !document.body.classList.contains("nav-closed");
+}
+
+function setNavOpen(open) {
+  document.body.classList.toggle("nav-closed", !open);
+  const toggle = $("navToggle");
+  if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  requestAnimationFrame(fitCharts);
+}
+
 // ---- wiring ----------------------------------------------------------------------
-function wireToolbar() {
-  $("selMetric").addEventListener("change", (e) => {
+function cap(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// (Re)build the Settings view content from the catalog. Each field persists to
+// the "pwm_settings" cookie on change.
+function buildSettings() {
+  const host = $("settingsView");
+  if (!host) return;
+  const cat = S.catalog || {};
+  const themes = (cat.themes || ["dark", "light"]);
+  const metrics = cat.metrics || {};
+  const metricOptions = Object.keys(metrics)
+    .map((k) => `<option value="${k}">${(metrics[k] && metrics[k].label) || k}</option>`)
+    .join("");
+  const themeSeg = themes.map((t) =>
+    `<button type="button" class="seg-btn" data-theme="${t}">${cap(t)}</button>`).join("");
+  host.innerHTML = `
+    <h2>Settings</h2>
+    <p class="muted">Choices are saved in a <code>pwm_settings</code> cookie on this browser.</p>
+
+    <fieldset class="set"><legend>Appearance</legend>
+      <div class="row"><span class="row-label">Color mode</span>
+        <div class="seg" id="setThemeSeg">${themeSeg}</div></div>
+    </fieldset>
+
+    <fieldset class="set"><legend>Graph</legend>
+      <div class="row"><span class="row-label">Metric</span>
+        <select id="setMetric">${metricOptions || `<option value="power_w">Power</option>`}</select></div>
+      <div class="row"><span class="row-label">Dashboard window</span>
+        <select id="setDashWin"></select></div>
+      <div class="row"><span class="row-label">Channel window</span>
+        <select id="setChanWin"></select></div>
+    </fieldset>
+
+    <fieldset class="set"><legend>Units</legend>
+      <div class="row"><span class="row-label">Energy</span><select id="setEnergy"></select></div>
+      <div class="row"><span class="row-label">Current</span><select id="setCurrent"></select></div>
+    </fieldset>
+
+    <fieldset class="set"><legend>Energy total</legend>
+      <div class="row"><span class="row-label">Days shown</span>
+        <input id="setDays" type="number" min="${ENERGY_DAYS_MIN}" max="${ENERGY_DAYS_MAX}" step="1">
+        <span class="hint">${ENERGY_DAYS_MIN}–${ENERGY_DAYS_MAX} days</span></div>
+    </fieldset>
+
+    <fieldset class="set"><legend>Metric colors</legend>
+      <div class="row"><span class="row-label">Voltage</span><input id="colVoltage" type="color"></div>
+      <div class="row"><span class="row-label">Current</span><input id="colCurrent" type="color"></div>
+      <div class="row"><span class="row-label">Power</span><input id="colPower" type="color"></div>
+      <div class="row"><span class="row-label">Energy</span><input id="colEnergy" type="color"></div>
+    </fieldset>
+
+    <div class="set-actions">
+      <button id="btnResetS" type="button" title="Reset all settings (clears the cookie)">Reset settings</button>
+    </div>`;
+
+  const fillWin = (id, val) => {
+    const s = $(id);
+    if (!s) return;
+    WINDOWS.forEach((w) => {
+      const o = document.createElement("option");
+      o.value = w;
+      o.textContent = WINDOW_LABEL(w);
+      s.appendChild(o);
+    });
+    s.value = String(val);
+  };
+  fillWin("setDashWin", S.settings.dashWindowSec);
+  fillWin("setChanWin", S.settings.chanWindowSec);
+
+  const fillOpts = (id, values, val) => {
+    const s = $(id);
+    if (!s) return;
+    values.forEach((u) => {
+      const o = document.createElement("option");
+      o.value = u;
+      o.textContent = u;
+      s.appendChild(o);
+    });
+    s.value = val;
+  };
+  fillOpts("setEnergy", (cat.energy_units || ["Wh", "kWh"]), S.settings.energyUnit);
+  fillOpts("setCurrent", CURRENT_UNITS, S.settings.currentUnit);
+
+  populateSettings();
+
+  const bind = (id, evt, fn) => { const el = $(id); if (el) el.addEventListener(evt, fn); };
+  bind("setMetric", "change", (e) => {
     S.settings.metric = e.target.value;
     writeCookie();
     S.sig = "";
     renderChart();
   });
-  $("selWindow").addEventListener("change", (e) => {
-    S.settings.windowSec = Number(e.target.value);
+  bind("setDashWin", "change", (e) => {
+    S.settings.dashWindowSec = Number(e.target.value);
     writeCookie();
     scrollAllCharts();
   });
-  $("selEnergy").addEventListener("change", (e) => {
+  bind("setChanWin", "change", (e) => {
+    S.settings.chanWindowSec = Number(e.target.value);
+    writeCookie();
+    scrollAllCharts();
+  });
+  bind("setEnergy", "change", (e) => {
     S.settings.energyUnit = e.target.value;
     writeCookie();
-    S.channels.forEach((ch) => renderCard(ch.id));
-    renderEnergyBarsActive(); // bar tooltips/labels follow the chosen unit
+    refreshTextViews();
   });
-  $("btnTheme").addEventListener("click", () => {
-    const themes = (S.catalog && S.catalog.themes) || ["dark", "light"];
-    const next = themes[(themes.indexOf(S.settings.theme) + 1) % themes.length] || "light";
-    S.settings.theme = next;
+  bind("setCurrent", "change", (e) => {
+    S.settings.currentUnit = e.target.value;
     writeCookie();
-    applyTheme();
+    refreshTextViews();
+  });
+  bind("setDays", "input", (e) => {
+    S.settings.energyDays = clampInt(e.target.value, ENERGY_DAYS_MIN, ENERGY_DAYS_MAX, ENERGY_DAYS_MIN);
+    e.target.value = S.settings.energyDays;
+    writeCookie();
+    renderEnergyBarsActive();
+    if (S.view.name === "dashboard") { S.sig = ""; renderChart(); } // rebuild energy graph
+  });
+  const colorIds = { colVoltage: "voltage_v", colCurrent: "current_a", colPower: "power_w", colEnergy: "energy" };
+  Object.keys(colorIds).forEach((id) => bind(id, "input", (e) => {
+    S.settings.colors[colorIds[id]] = e.target.value;
+    writeCookie();
     S.sig = "";
     renderChart();
-  });
-  $("btnReset").addEventListener("click", () => { clearCookie(); location.reload(); });
-  window.addEventListener("resize", debounce(() => {
-    if (S.view.name === "channel" && S.table) {
-      Object.keys(S.table.cells).forEach((id) => {
-        const cell = S.table.cells[id];
-        if (cell.chart && cell.box) {
-          cell.chart.setSize({ width: Math.max(320, cell.box.clientWidth || 640), height: 300 });
-        }
-        Object.keys(cell.tiles || {}).forEach((key) => {
-          const t = cell.tiles[key];
-          if (t.chart && t.plot) {
-            t.chart.setSize({ width: Math.max(120, t.plot.clientWidth || 200), height: 56 });
-          }
-        });
-      });
-    } else if (chartActive() && S.u) {
-      const w = Math.max(320, $("chart").clientWidth || 600);
-      S.u.setSize({ width: w, height: 320 });
-    }
-  }, 150));
+    renderEnergyBarsActive();
+  }));
+  const seg = $("setThemeSeg");
+  if (seg) Array.from(seg.querySelectorAll("button")).forEach((b) => b.addEventListener("click", () => {
+    S.settings.theme = b.dataset.theme;
+    writeCookie();
+    applyTheme();
+    populateSettings();
+    S.sig = "";
+    renderChart();
+  }));
+  bind("btnResetS", "click", () => { clearCookie(); location.reload(); });
+}
+
+// Copy the current S.settings into the Settings form controls.
+function populateSettings() {
+  const s = S.settings;
+  const setVal = (id, val) => { const el = $(id); if (el) el.value = val; };
+  setVal("setMetric", s.metric);
+  setVal("setDashWin", String(s.dashWindowSec));
+  setVal("setChanWin", String(s.chanWindowSec));
+  setVal("setEnergy", s.energyUnit);
+  setVal("setCurrent", s.currentUnit);
+  setVal("setDays", String(s.energyDays));
+  setVal("colVoltage", s.colors.voltage_v || "");
+  setVal("colCurrent", s.colors.current_a || "");
+  setVal("colPower", s.colors.power_w || "");
+  setVal("colEnergy", s.colors.energy || "");
+  const seg = $("setThemeSeg");
+  if (seg) Array.from(seg.querySelectorAll("button")).forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.theme === s.theme));
+}
+
+// Re-format all on-screen numbers after a unit change.
+function refreshTextViews() {
+  S.channels.forEach((ch) => renderCard(ch.id));
+  renderEnergyBarsActive();
 }
 
 function debounce(fn, ms) {
@@ -1048,6 +1472,6 @@ function escapeHtml(s) {
 }
 
 // ---- boot ------------------------------------------------------------------------
-wireToolbar();
+window.addEventListener("resize", debounce(fitCharts, 150));
 wireNav();
 connect();

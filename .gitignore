@@ -1,22 +1,16 @@
-# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
 build/
 dist/
-
-# Virtual environments
+.**/
 .venv**/
 .venv/
-
-# Editor / OS
 .vscode/
 .idea/
 *.swp
 .DS_Store
 Thumbs.db
-
-# Local runtime state (e.g. if energy.state_file is pointed into the repo)
 state/
 *.log

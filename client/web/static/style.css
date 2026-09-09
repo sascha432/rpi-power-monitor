@@ -39,24 +39,10 @@ body {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-#toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 14px;
-  padding: 10px 18px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
+#toolbar,
 #toolbar label {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--muted);
+  /* toolbar removed 2026-09-09 (settings moved to the Settings view) */
+  display: none;
 }
 
 select, button {
@@ -161,8 +147,94 @@ button:hover { border-color: var(--accent); }
 #chartBox {
   padding: 14px 18px 6px;
 }
-#chart { width: 100%; }
-#chart canvas { display: block; }
+#dashGraphs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 12px;
+}
+.dash-panel {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 10px 12px 12px;
+}
+.dg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.dg-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.dg-sub {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.dg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.dg-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dg-wrap { width: 100%; }
+.dg-plot { width: 100%; }
+.dg-plot canvas { display: block; }
+
+/* Energy dashboard graph: grouped daily bars (one group per day). */
+.dgb-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 60px 0;
+  text-align: center;
+}
+.dgb {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 2px 0;
+}
+.dgb-day {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.dgb-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 150px;
+}
+.dgb-bars i {
+  flex: 1 1 0;
+  min-width: 1px;
+  min-height: 2px;
+  border-radius: 1px 1px 0 0;
+}
+.dgb-day.today .dgb-bars i { box-shadow: inset 0 0 0 1px var(--accent); }
+.dgb-day b {
+  font-size: 8px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
 
 footer { padding: 8px 18px 18px; }
 footer p { margin: 0; line-height: 1.45; }
@@ -184,11 +256,46 @@ footer p { margin: 0; line-height: 1.45; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 14px 10px;
+  padding: 62px 10px 14px; /* top space clears the fixed menu toggle */
   background: var(--panel);
   border-right: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
+
+/* Collapsible sidebar: toggles to a single fixed menu icon at the top-left. */
+.nav-toggle {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--text);
+  cursor: pointer;
+}
+.nav-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.nav-toggle .ic {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* open: chevron; closed: hamburger */
+body:not(.nav-closed) .nav-toggle .ic-menu { display: none; }
+body.nav-closed .nav-toggle .ic-collapse { display: none; }
+
+body.nav-closed #sidebar { display: none; }
+body.nav-closed #main { padding-left: 56px; } /* clear the fixed icon */
 
 #sidebar .nav-list {
   list-style: none;
@@ -233,16 +340,17 @@ footer p { margin: 0; line-height: 1.45; }
   box-shadow: inset 3px 0 0 var(--accent);
   font-weight: 600;
 }
-.nav-num {
-  flex: none;
-  min-width: 18px;
-  text-align: right;
-  font-size: 0.72rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.nav-item.is-active .nav-num { color: var(--accent); }
 .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item .nav-ic {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 #main { flex: 1 1 auto; min-width: 0; }
 
@@ -345,12 +453,12 @@ button.metric-tile:hover { border-color: var(--accent); }
 .metric-tile .mt-plot { width: 100%; }
 .metric-tile .mt-plot canvas { display: block; }
 
-/* Energy tile: last-7-days daily-consumption bar strip (plain div bars). */
+/* Energy tile: N-day daily-consumption bar strip inside the tile. */
 .metric-tile .mt-bars {
   display: flex;
-  align-items: stretch;
-  gap: 3px;
-  height: 60px;
+  align-items: flex-end;
+  gap: 2px;
+  height: 56px;
   margin-top: auto; /* pin the strip to the bottom of the tile */
 }
 .metric-tile .mt-bars .bar {
@@ -361,15 +469,18 @@ button.metric-tile:hover { border-color: var(--accent); }
   flex-direction: column;
   justify-content: flex-end;
   align-items: center;
-  gap: 3px;
+  gap: 1px;
 }
 .metric-tile .mt-bars .bar i {
   display: block;
   width: 100%;
-  max-width: 18px;
   min-height: 2px;
-  background: var(--muted); /* overridden per channel via inline style */
-  border-radius: 3px 3px 0 0;
+  border-radius: 2px 2px 0 0;
+  background: var(--muted); /* overridden inline with the energy colour */
+}
+.metric-tile .mt-bars .bar.today i {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 .metric-tile .mt-bars .bar b {
   font-size: 8px;
@@ -381,18 +492,84 @@ button.metric-tile:hover { border-color: var(--accent); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.metric-tile .mt-bars .bar.today i {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-}
 
 /* settings view */
 #settingsView { padding: 16px 18px; max-width: 720px; }
-#settingsView h2 { margin: 0 0 8px; font-size: 1.2rem; }
+#settingsView h2 { margin: 0 0 6px; font-size: 1.2rem; }
+#settingsView > p.muted { margin: 0 0 16px; line-height: 1.5; }
 #settingsView code {
   background: var(--panel2);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
 }
-#settingsView .muted { line-height: 1.5; }
+fieldset.set {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px 12px;
+  background: var(--panel);
+}
+fieldset.set legend {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+fieldset.set .row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 2px;
+}
+fieldset.set .row + .row { border-top: 1px solid var(--border); }
+fieldset.set .row-label { flex: 0 0 168px; color: var(--text); font-size: 0.9rem; }
+fieldset.set select,
+fieldset.set input[type="number"] {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+}
+fieldset.set input[type="color"] {
+  width: 46px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+fieldset.set .hint { font-size: 0.76rem; color: var(--muted); }
+.seg { display: inline-flex; gap: 4px; }
+.seg-btn {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.seg-btn:hover { border-color: var(--accent); }
+.seg-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--panel2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.set-actions { margin-top: 14px; }
+.set-actions button {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+.set-actions button:hover { border-color: var(--accent); }
