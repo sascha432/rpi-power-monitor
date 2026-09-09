@@ -164,6 +164,7 @@ function createCards() {
       color,
       v: [], a: [], w: [], e: [],
       last: { v: null, a: null, w: null, s: 0, t: 0 },
+      daily: null, // last-7-days Wh bars: { prev:[6], base, anchor, today }
     };
 
     const card = document.createElement("article");
@@ -391,8 +392,8 @@ function buildFocusCell(ch) {
     })
     .join("") +
     `<div class="metric-tile energy" data-metric="energy" title="Energy total (read-only)">` +
-    `<span class="mt-spacer" aria-hidden="true"></span>` +
-    `<span class="mt-top"><span class="mt-label">Energy total</span><span class="mt-value">--</span></span></div>`;
+    `<span class="mt-top"><span class="mt-label">Energy total</span><span class="mt-value">--</span></span>` +
+    `<span class="mt-bars" aria-hidden="true"></span></div>`;
 
   el.innerHTML = `
     <div class="main-stat"><span class="ms-val">--</span><span class="ms-unit"></span></div>
@@ -415,6 +416,9 @@ function buildFocusCell(ch) {
     cell.tiles[key] = { key, root: t, value: t.querySelector(".mt-value"), plot: t.querySelector(".mt-plot"), chart: null };
     if (key !== "energy") t.addEventListener("click", () => selectTileMetric(key));
   });
+  // Energy tile hosts the 7-day bar strip instead of a sparkline.
+  cell.barsEl = el.querySelector(".mt-bars") || null;
+  if (cell.barsEl) buildEnergyBars(cell.barsEl);
   return cell;
 }
 
@@ -491,6 +495,7 @@ function buildChannelFocus(activeId) {
   });
   S.table = { cells: { [ch.id]: cell }, charts: cell.charts, activeId };
   renderCard(ch.id); // populate the hero overlay + every tile readout
+  renderEnergyBars(cell); // 7-day daily-consumption bars on the Energy tile
   syncTable();
 }
 
@@ -582,6 +587,7 @@ function handle(msg) {
   if (!msg || !msg.type) return;
   if (msg.type === "hello") onHello(msg);
   else if (msg.type === "history") onHistory(msg.history || {});
+  else if (msg.type === "daily") onDaily(msg);
   else if (msg.type === "sample") onSample(msg);
 }
 
@@ -603,6 +609,109 @@ function onHistory(history) {
   seedFromHistory(history);
   S.sig = "";
   renderChart();
+}
+
+// ---- daily energy (last-7-days bars on the read-only Energy tile) ---------
+// The server pushes a one-shot daily block once per Pi connection. The first
+// six values are completed calendar days; the last is today's Wh at block
+// build, paired with ``anchor`` = the all-time total at that same instant.
+// The today bar is then kept live as base + (last.t - anchor), using the
+// cumulative total that already streams in every sample.
+const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function onDaily(msg) {
+  if (!S.catalog) return; // channels not built yet (hello precedes daily)
+  const days = msg.days || null;
+  const today = msg.today || null;
+  S.channels.forEach((ch) => {
+    const m = S.meta[ch.id];
+    if (!m) return;
+    const d = days ? days[String(ch.id)] : null;
+    if (d && Array.isArray(d.vals) && d.vals.length) {
+      m.daily = {
+        prev: d.vals.slice(0, -1), // completed days, oldest -> yesterday
+        base: d.vals[d.vals.length - 1] || 0, // today's Wh at block build
+        anchor: typeof d.anchor === "number" ? d.anchor : null,
+        today,
+      };
+    } else {
+      m.daily = null;
+    }
+  });
+  renderEnergyBarsActive();
+}
+
+// Live Wh consumed today: today's base + the streamed total delta since the
+// block's anchor. Both base and anchor were captured at the same instant.
+function todayLiveWh(m) {
+  const d = m && m.daily;
+  if (!d) return 0;
+  const nowT = m.last && typeof m.last.t === "number" ? m.last.t : d.anchor;
+  const anchor = typeof d.anchor === "number" ? d.anchor : nowT;
+  return d.base + (nowT - anchor);
+}
+
+// Weekday + readable date for the bar ``daysAgo`` before the (Pi-local) iso.
+function dateForBar(iso, daysAgo) {
+  const parts = String(iso || "").split("-").map(Number);
+  const base = parts.length === 3 && parts.every(Number.isFinite)
+    ? new Date(parts[0], parts[1] - 1, parts[2])
+    : new Date();
+  base.setDate(base.getDate() - daysAgo);
+  return { wd: WEEKDAYS[base.getDay()] || "", date: base.toDateString() };
+}
+
+// Create the 7 bar slots once per Energy-tile build.
+function buildEnergyBars(container) {
+  if (!container || container.childElementCount) return;
+  for (let i = 0; i < 7; i++) {
+    const bar = document.createElement("span");
+    bar.className = "bar";
+    bar.append(document.createElement("i"), document.createElement("b"));
+    container.appendChild(bar);
+  }
+}
+
+// Refresh the bar strip of one channel cell from its stored daily data.
+function renderEnergyBars(cell) {
+  const meta = cell && cell.meta;
+  const box = cell && cell.barsEl;
+  if (!meta || !box) return;
+  const bars = Array.from(box.children);
+  const daily = meta.daily;
+  if (!daily || !bars.length) {
+    bars.forEach((b) => {
+      b.classList.remove("today");
+      b.title = "";
+      const i = b.querySelector("i");
+      if (i) i.style.height = "2px";
+    });
+    return;
+  }
+  // 7 values oldest -> today (today clamped at 0 for display; tooltip is exact)
+  const values = daily.prev.concat([Math.max(0, todayLiveWh(meta))]);
+  const peak = values.reduce((hi, v) => (v > hi ? v : hi), 0) || 1;
+  const lastIdx = values.length - 1;
+  bars.forEach((bar, i) => {
+    const raw = values[i] || 0;
+    const fill = bar.querySelector("i");
+    if (fill.style.background !== meta.color) fill.style.background = meta.color;
+    // Leave room at the bottom of each column for the weekday label.
+    const avail = Math.max(4, bar.clientHeight - 13);
+    fill.style.height = Math.max(2, Math.min(avail, (raw / peak) * avail)) + "px";
+    bar.classList.toggle("today", i === lastIdx);
+    const barDate = dateForBar(daily.today, lastIdx - i);
+    const lab = bar.querySelector("b");
+    if (lab) lab.textContent = barDate.wd;
+    bar.title = barDate.date + " · " + fmtEnergy(raw);
+  });
+}
+
+// Re-render bars for whichever channel cell is on screen (if any).
+function renderEnergyBarsActive() {
+  if (S.view.name === "channel" && S.table && S.table.cells) {
+    Object.keys(S.table.cells).forEach((id) => renderEnergyBars(S.table.cells[id]));
+  }
 }
 
 // ---- data buffers ---------------------------------------------------------------
@@ -851,6 +960,7 @@ function syncTable() {
       t.chart.setData([S.timeline, bufferForMetric(cell.meta, key)]);
       t.chart.setScale("x", range);
     });
+    renderEnergyBars(cell); // keep today's bar growing from the live total
   });
 }
 
@@ -890,6 +1000,7 @@ function wireToolbar() {
     S.settings.energyUnit = e.target.value;
     writeCookie();
     S.channels.forEach((ch) => renderCard(ch.id));
+    renderEnergyBarsActive(); // bar tooltips/labels follow the chosen unit
   });
   $("btnTheme").addEventListener("click", () => {
     const themes = (S.catalog && S.catalog.themes) || ["dark", "light"];

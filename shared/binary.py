@@ -43,6 +43,67 @@ _UINT32_MAX = (1 << 32) - 1
 _INT32_MIN, _INT32_MAX = -(1 << 31), (1 << 31) - 1
 _INT64_MIN, _INT64_MAX = -(1 << 63), (1 << 63) - 1
 
+# Control-plane channel ids (reserved; never a real rail/aggregate id). Real
+# channels are small (rails keep chip numbers 1..3, aggregates are 100 + idx),
+# so any id with bit 31 set can never collide with them. Frames carrying these
+# ids form the one-shot "daily energy" block the server sends to each newly
+# connected client *before* any sample frame; other consumers should ignore
+# frames whose channel_id is one of these.
+DAILY_HEADER_ID = 0x8000_0001
+DAILY_VALUE_ID = 0x8000_0002
+
+#: How many trailing calendar days (oldest..today) the daily block carries.
+DAILY_BARS = 7
+
+# Daily control-frame field layout (each is still ``FRAME_SIZE`` bytes so the
+# stream stays a multiple of 40 and fixed-size slicing keeps working):
+#
+#   header frame (channel_id = DAILY_HEADER_ID)
+#     timestamp_millis      = today as YYYYMMDD  (fits uint32, e.g. 20260909)
+#     voltage_millivolt     = number of day buckets per channel (DAILY_BARS)
+#     current_milliamps     = number of channels in the block
+#     power_milliwatt       = schema version (1)
+#     energy fields         = 0
+#
+#   value frame (channel_id = DAILY_VALUE_ID), sent day-major: for each day
+#   index 0..n-1 (oldest..today) one frame per channel
+#     timestamp_millis      = day index (n-1 == today)
+#     voltage_millivolt     = the wire channel id of the real channel
+#     energy_..._total      = that (channel, day) bucket in mWh
+#     energy_... (session)  = the all-time total mWh at build time, but ONLY
+#                             on the today row (n-1); the client uses it as
+#                             the live-update anchor (0 elsewhere)
+def pack_daily_header(
+    today_yyyymmdd: int,
+    n_channels: int,
+    n_days: int = DAILY_BARS,
+    version: int = 1,
+) -> bytes:
+    """Pack the header frame that starts the one-shot daily-energy block."""
+    return pack_channel(
+        channel_id=DAILY_HEADER_ID,
+        timestamp_millis=today_yyyymmdd,
+        voltage_millivolt=n_days,
+        current_milliamps=n_channels,
+        power_milliwatt=version,
+    )
+
+
+def pack_daily_value(
+    day_index: int,
+    channel_id: int,
+    daily_mwh: int,
+    total_anchor_mwh: int = 0,
+) -> bytes:
+    """Pack one (day, channel) daily-energy value frame (see field layout)."""
+    return pack_channel(
+        channel_id=DAILY_VALUE_ID,
+        timestamp_millis=day_index,
+        voltage_millivolt=channel_id,
+        energy_milliwatthours=total_anchor_mwh,
+        energy_milliwatthours_total=daily_mwh,
+    )
+
 
 def _clamp(value: int, lo: int, hi: int) -> int:
     return lo if value < lo else hi if value > hi else value

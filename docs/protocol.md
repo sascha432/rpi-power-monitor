@@ -81,6 +81,12 @@ and the two energy counters for the whole group (voltage/current are 0).
 Aggregate power is the sum of the member rails' instantaneous power, so
 aggregate energy tracks the summed member energy.
 
+> Reserved ids: a small range of `channel_id` values with bit 31 set
+> (`0x8000_0000`+) is used by the one-shot **daily-energy block** below and
+> never collides with real channels (rails `1..3`, aggregates `100 + idx`).
+> Ignore frames whose `channel_id` is in that range if you do not need daily
+> history.
+
 ## Timing
 
 - `timestamp_millis`: uint32 **milliseconds since the server process started**
@@ -98,9 +104,65 @@ Every published channel carries its own pair of counters:
 - `energy_milliwatthours_total`: the same counter but **persisted** across
   restarts - the server loads it from `state/energy.json` at startup and saves
   it periodically and on shutdown.
+- `state/energy.json` also holds a rolling **per-day** log (per channel, in
+  the Pi's local time) that keeps the newest `energy.storage_days` days
+  (`config/server.yaml`); the totals remain all-time accumulations.
 - Rails integrate their own power (V*I); aggregates integrate the summed
   power of their member rails.
 - Both are int64 (signed): net energy may decrease when power flows backwards.
+
+## One-shot daily-energy block (sent on connect)
+
+When a client connects (and passes the server's allowlist), the server sends a
+small block of **reserved control frames** *before* the first sample frame, so
+a dashboard can draw a "last 7 days" daily-consumption chart straight away.
+Every frame is still 40 bytes (the stream stays a multiple of 40 and fixed-size
+slicing keeps working). Clients that do not need daily history simply ignore
+frames whose `channel_id` is a reserved id (see the note under "Channel set and
+ids"). The block is emitted once per accepted connection, from the accept
+thread *before* the client is registered for broadcasts, so it always precedes
+that client's first sample and the two never interleave.
+
+Reserved `channel_id` values (bit 31 set; never a real rail/aggregate id):
+
+| id          | meaning                                    |
+|------------:|--------------------------------------------|
+| 0x80000001  | daily block header                         |
+| 0x80000002  | daily block value (one per day x channel)  |
+
+The block = **one header frame**, then **one value frame per (day, channel)**
+in day-major order (day index 0 = oldest ... n-1 = today), where `n` is the
+number of trailing calendar days sent (currently 7). "Today" uses the Pi's
+local date.
+
+Header frame (`channel_id` = 0x80000001):
+
+| field                | meaning                                |
+|----------------------|----------------------------------------|
+| `timestamp_millis`   | today as `YYYYMMDD` (uint32)           |
+| `voltage_millivolt`  | number of day buckets (n)              |
+| `current_milliamps`  | number of channels in the block        |
+| `power_milliwatt`    | schema version (currently 1)           |
+| energy fields        | 0                                      |
+
+Value frame (`channel_id` = 0x80000002):
+
+| field                | meaning                                |
+|----------------------|----------------------------------------|
+| `timestamp_millis`   | day index (0..n-1; n-1 = today)        |
+| `voltage_millivolt`  | the channel's normal wire id           |
+| `energy_milliwatthours` | all-time total mWh at block build - only on the today row (n-1), else 0 |
+| `energy_milliwatthours_total` | that (channel, day) bucket in mWh |
+
+`current_milliamps` / `power_milliwatt` are 0 on value frames. A dashboard uses
+the today row's bucket as the base for "energy today so far" and the matching
+all-time total as a live-update anchor: because the all-time total is already
+present in every periodic sample frame, the current-day bar keeps growing
+without re-sending the block:
+
+```
+today_live = today_base + (total_now - anchor)
+```
 
 ## Types / limits (auto-clamped by the server)
 

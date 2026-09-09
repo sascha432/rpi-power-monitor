@@ -58,6 +58,9 @@ sampling:
   shunt_conversion_us: 1100 # INA3221 shunt-voltage conversion time
   # valid conversion times: 140|204|332|588|1100|2116|4156|8244 us
 
+energy:
+  storage_days: 30        # rolling per-day log: days of daily energy kept in state/energy.json
+
 # ---------------------------------------------------------------------------
 # MQTT settings
 # ---------------------------------------------------------------------------

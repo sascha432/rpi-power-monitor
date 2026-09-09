@@ -71,6 +71,7 @@ class TcpServer:
         self._server_socket: Optional[socket.socket] = None
         self._clients: Set[socket.socket] = set()
         self._clients_lock = threading.Lock()
+        self._connect_payload_builder = None
         self._running = False
         self._accept_thread: Optional[threading.Thread] = None
 
@@ -112,6 +113,18 @@ class TcpServer:
                 client.sendall(payload)
             except OSError:
                 self._drop(client)
+
+    def set_connect_payload(self, builder) -> None:
+        """Register a callable whose bytes are sent to each new client first.
+
+        ``builder`` is called (no args) in the accept thread right after a
+        client connects and passes the allowlist. Its returned bytes are sent
+        to that client *before* it is registered for broadcasts, so the client
+        always receives the payload (e.g. the daily-energy history block)
+        ahead of the first sample frame and the two never interleave. Return
+        ``None`` or empty bytes to send nothing.
+        """
+        self._connect_payload_builder = builder
 
     def close(self) -> None:
         """Stop accepting and close every client connection."""
@@ -166,8 +179,21 @@ class TcpServer:
                     except OSError:
                         pass
                     continue
-                self._clients.add(client)
             client.settimeout(5.0)
+            # Deliver the one-shot connect payload (daily-energy history) BEFORE
+            # registering for broadcasts, so it always precedes the first sample
+            # frame for this client and the two can never interleave.
+            if self._connect_payload_builder is not None:
+                try:
+                    payload = self._connect_payload_builder()
+                    if payload:
+                        client.sendall(payload)
+                except OSError:
+                    LOGGER.debug("TCP connect payload failed for %s", addr)
+                    self._drop(client)
+                    continue
+            with self._clients_lock:
+                self._clients.add(client)
             LOGGER.debug("TCP client connected: %s (total %d)", addr, len(self._clients))
             threading.Thread(
                 target=self._reader_loop, args=(client, addr), name="tcp-client", daemon=True

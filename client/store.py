@@ -50,6 +50,11 @@ class DataStore:
         self._connected_at: Optional[float] = None
         self._last_receive: Optional[float] = None
         self._last_frame_at: Optional[float] = None
+        # One-shot per-day energy block pushed by the server on connect:
+        # str(cid) -> {"vals": [..n Wh oldest->today], "anchor": all-time Wh}.
+        self._daily = None
+        self._daily_today: Optional[str] = None  # server (Pi-local) newest date
+        self._daily_rev = 0
 
     # -- status --------------------------------------------------------------
 
@@ -72,6 +77,11 @@ class DataStore:
                 for cid in self._series:
                     self._series[cid].clear()
                 self._latest.clear()
+                # The daily block belongs to the previous server run too: clear
+                # it until the new connection's one-shot block arrives.
+                self._daily = None
+                self._daily_today = None
+                self._daily_rev += 1
 
     # -- ingest --------------------------------------------------------------
 
@@ -131,6 +141,49 @@ class DataStore:
                 "age_s": (time.time() - self._last_receive) if self._last_receive else None,
                 "channels": len(self.channels),
             }
+
+    # -- daily energy (one-shot block from the server) -----------------------
+
+    def apply_daily(
+        self, today: str, per_channel: Dict[int, Dict[str, float]]
+    ) -> None:
+        """Store the server's one-shot per-channel daily-energy block.
+
+        ``per_channel`` maps a wire channel id to
+        ``{"vals": [..n Wh, oldest->today], "anchor": <all-time total Wh at
+        block build>}``. Only configured channels are kept; unknown ids are
+        ignored. Replaces any previous block (a fresh block arrives on every
+        server connection).
+        """
+        with self._lock:
+            kept: Dict[str, Dict[str, float]] = {}
+            for cid, entry in per_channel.items():
+                if cid not in self._series:
+                    continue
+                vals = [round(float(v), 4) for v in (entry.get("vals") or [])]
+                if not vals:
+                    continue
+                kept[str(cid)] = {
+                    "vals": vals,
+                    "anchor": round(float(entry.get("anchor") or 0.0), 4),
+                }
+            if not kept:
+                return
+            self._daily = kept
+            self._daily_today = today
+            self._daily_rev += 1
+
+    def daily(self) -> Optional[Dict[str, object]]:
+        """Latest daily block as ``{"today": iso, "days": {cid: ..}}``."""
+        with self._lock:
+            if not self._daily:
+                return None
+            return {"today": self._daily_today, "days": self._daily}
+
+    def daily_revision(self) -> int:
+        """Monotonic counter bumped whenever the daily block is (re)applied."""
+        with self._lock:
+            return self._daily_rev
 
     def seed_history(self, max_points: int = 1500) -> Dict[str, List[List[float]]]:
         """Decimated per-channel history to seed a freshly opened browser tab.

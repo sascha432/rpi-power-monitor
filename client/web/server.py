@@ -173,6 +173,7 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
         self._clients_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._broadcaster: Optional[threading.Thread] = None
+        self._last_daily_rev = store.daily_revision()
         self._started = False
         self._networks: List[_Network] = _compile_allowlist(config.web.allowed_clients)
         super().__init__(server_address, _Handler)
@@ -300,9 +301,11 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
         conn = WebSocketConnection(request)
         self._register(conn)
         try:
-            # Push catalog + seed history right after the upgrade.
+            # Push catalog + seed history right after the upgrade, then the
+            # per-day energy block (may be empty until the Pi sends one).
             conn.send_text(self._hello_message())
             conn.send_text(self._history_message())
+            conn.send_text(self._daily_message())
             run_read_loop(conn, on_message=self._on_client_message)
         except (ConnectionError, OSError, WebSocketError) as exc:
             LOGGER.debug("WebSocket client left: %s", exc)
@@ -335,6 +338,16 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
             separators=(",", ":"),
         )
 
+    def _daily_message(self) -> str:
+        """The latest per-day energy block, or an explicit empty payload."""
+        daily = self.store.daily()
+        if daily is None:
+            return json.dumps(
+                {"type": "daily", "today": None, "days": None},
+                separators=(",", ":"),
+            )
+        return json.dumps({"type": "daily", **daily}, separators=(",", ":"))
+
     def _sample_message(self) -> str:
         return json.dumps(
             {
@@ -350,6 +363,11 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
         update_s = max(0.05, self.config.display.update_ms / 1000.0)
         while not self._stop_event.is_set():
             started = time.monotonic()
+            # The daily block only changes on a (re)connect or a day rollover,
+            # so broadcast it just when the store revision moves.
+            if self.store.daily_revision() != self._last_daily_rev:
+                self._last_daily_rev = self.store.daily_revision()
+                self._broadcast(self._daily_message())
             text = self._sample_message()
             self._broadcast(text)
             wait = update_s - (time.monotonic() - started)

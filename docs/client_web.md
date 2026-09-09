@@ -127,6 +127,11 @@ display:
   window, energy unit, theme, per-channel "plot" toggles). They are applied on
   every load and persist across sessions — no server round-trip.
 * The **Reset** button clears the cookie and reloads with the defaults.
+* A **`daily`** message carries the Pi's one-shot **last-7-days energy** block
+  (those are the reserved control frames described in `docs/protocol.md`). In
+  the single-channel view the **Energy total** tile shows the seven
+  daily-consumption bars; the "today" bar keeps growing live from the
+  cumulative total already present in every `sample` message.
 
 ## 4. Testing without a Pi (optional)
 
@@ -138,6 +143,10 @@ There is no bundled simulator, but the dashboard talks pure TCP: point
 from shared.binary import pack_channel
 # ... send pack_channel(channel_id=1, timestamp_millis=..., power_milliwatt=...) etc.
 ```
+
+If you only fake per-sample frames (no daily block) the 7-day bars simply stay
+empty — the real server sends that block once per connection before the first
+sample; a plain client can ignore the reserved-id frames.
 
 ## 5. Troubleshooting
 

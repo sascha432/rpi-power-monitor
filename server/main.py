@@ -12,8 +12,9 @@ Data model
   **power + energy only** (voltage/current are 0): their power is the sum of
   the member rails' instantaneous power and energy is integrated from it.
 * Energy is tracked per channel (rails AND aggregates) in milliwatt-hours
-  with two counters: *session* (since this run) and *total* (persisted across
-  restarts in ``state/energy.json``).
+  with three accumulators: *session* (since this run), *total* (persisted
+  across restarts) and a rolling *daily* log. ``state/energy.json`` keeps the
+  all-time totals plus the last ``energy.storage_days`` per-day buckets.
 * Every sample is broadcast to TCP clients as one fixed-size binary frame per
   channel (see ``shared.binary``) - little-endian and layout-identical to a C
   struct on x86-64, so a C++ client can memcpy without conversion.
@@ -23,9 +24,15 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from shared.binary import FRAME_SIZE, pack_channel
+from shared.binary import (
+    DAILY_BARS,
+    FRAME_SIZE,
+    pack_channel,
+    pack_daily_header,
+    pack_daily_value,
+)
 
 from .config import DEFAULT_CONFIG_PATH, ServerConfig, load_config
 from .energy import DEFAULT_STATE_FILE, EnergyStore
@@ -118,6 +125,39 @@ def _build_mqtt_publisher(
     )
 
 
+def _make_daily_block(
+    energy: EnergyStore,
+    rails: list,
+    tags: List[str],
+) -> bytes:
+    """Build the one-shot 'daily energy' control block for a new TCP client.
+
+    Packs a header frame plus one value frame per (day, channel): the last
+    ``DAILY_BARS`` calendar days, oldest -> today, in mWh, for every published
+    channel (rails then aggregates, using the same wire ids as the sample
+    frames). The server sends this to each client once on connect so a
+    dashboard can render a last-7-days consumption chart; today's value frame
+    also carries the matching all-time total so the current-day bar can be
+    kept live from the cumulative total already present in every sample
+    frame (no need to re-send the daily block).
+    """
+    today, per_day, totals = energy.last_days(DAILY_BARS)
+    ids: List[Tuple[str, int]] = [(item.name, item.channel) for item in rails] + [
+        (tag, AGGREGATE_ID_BASE + index) for index, tag in enumerate(tags)
+    ]
+    block = bytearray(pack_daily_header(int(today.replace("-", "")), len(ids)))
+    last = len(per_day) - 1
+    for day_index, bucket in enumerate(per_day):
+        for name, channel_id in ids:
+            block += pack_daily_value(
+                day_index=day_index,
+                channel_id=channel_id,
+                daily_mwh=round(bucket.get(name, 0.0)),
+                total_anchor_mwh=round(totals[name]) if day_index == last else 0,
+            )
+    return bytes(block)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Load config, open the sensor + TCP output, then sample forever."""
     del argv
@@ -152,7 +192,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Energy is tracked for every published channel (rails + aggregates).
     rail_names = [item.name for item in rails]
     energy = EnergyStore(
-        channels=rail_names + tags, state_file=DEFAULT_STATE_FILE
+        channels=rail_names + tags,
+        state_file=DEFAULT_STATE_FILE,
+        storage_days=cfg.energy.storage_days,
     )
     session_mwh: Dict[str, float] = {}
     total_mwh: Dict[str, float] = {}
@@ -163,6 +205,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         max_clients=cfg.max_clients,
         allowed_clients=cfg.allowed_clients,
     )
+    # Send the last-7-days energy history once to every new client, right on
+    # connect (before any sample), so dashboards can draw a daily chart.
+    tcp.set_connect_payload(lambda: _make_daily_block(energy, rails, tags))
     tcp.start()
 
     interval_s = sensor.expected_interval_s()

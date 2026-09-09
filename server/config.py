@@ -47,6 +47,13 @@ class SamplingConfig:
 
 
 @dataclass
+class EnergyConfig:
+    #: Rolling per-day log depth kept in ``state/energy.json`` (all-time
+    #: totals are always retained regardless of this window).
+    storage_days: int = 90
+
+
+@dataclass
 class LoggingConfig:
     level: str = "INFO"  # DEBUG | INFO | WARNING | ERROR
     format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -89,6 +96,7 @@ class ServerConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     sensor: SensorConfig = field(default_factory=SensorConfig)
     sampling: SamplingConfig = field(default_factory=SamplingConfig)
+    energy: EnergyConfig = field(default_factory=EnergyConfig)
     mqtt: MqttConfig = field(default_factory=MqttConfig)
 
 
@@ -124,6 +132,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
     logging_cfg = data.get("logging") or {}
     sensor = data.get("sensor") or {}
     sampling = data.get("sampling") or {}
+    energy_cfg = data.get("energy") or {}
     mqtt = data.get("mqtt") or {}
     i2c = sensor.get("i2c") or {}
 
@@ -172,6 +181,9 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
             averaging=_to_int(sampling.get("averaging"), 16),
             bus_conversion_us=_to_int(sampling.get("bus_conversion_us"), 1100),
             shunt_conversion_us=_to_int(sampling.get("shunt_conversion_us"), 1100),
+        ),
+        energy=EnergyConfig(
+            storage_days=_to_int(energy_cfg.get("storage_days"), 90),
         ),
         mqtt=MqttConfig(
             host=str(mqtt_host),  # "" when host is null (YAML `host: ~`) => disabled

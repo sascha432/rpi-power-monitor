@@ -318,18 +318,7 @@ button.ghost { background: transparent; color: var(--muted); }
 }
 button.metric-tile { cursor: pointer; }
 button.metric-tile:hover { border-color: var(--accent); }
-.metric-tile.energy { position: relative; cursor: default; opacity: 0.92; }
-.metric-tile.energy .mt-spacer { height: 56px; }
-.metric-tile.energy .mt-top {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  text-align: center;
-}
+.metric-tile.energy { cursor: default; opacity: 0.92; }
 .metric-tile.is-active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .metric-tile .mt-top {
   display: flex;
@@ -355,6 +344,47 @@ button.metric-tile:hover { border-color: var(--accent); }
 }
 .metric-tile .mt-plot { width: 100%; }
 .metric-tile .mt-plot canvas { display: block; }
+
+/* Energy tile: last-7-days daily-consumption bar strip (plain div bars). */
+.metric-tile .mt-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 60px;
+  margin-top: auto; /* pin the strip to the bottom of the tile */
+}
+.metric-tile .mt-bars .bar {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 3px;
+}
+.metric-tile .mt-bars .bar i {
+  display: block;
+  width: 100%;
+  max-width: 18px;
+  min-height: 2px;
+  background: var(--muted); /* overridden per channel via inline style */
+  border-radius: 3px 3px 0 0;
+}
+.metric-tile .mt-bars .bar b {
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-tile .mt-bars .bar.today i {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
 
 /* settings view */
 #settingsView { padding: 16px 18px; max-width: 720px; }
