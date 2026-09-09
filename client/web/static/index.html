@@ -4,34 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Power Monitor</title>
+  <link rel="stylesheet" href="/static/vendor/uPlot.min.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header id="topbar">
-    <h1 id="appTitle">Power Monitor</h1>
-    <span id="connPill" class="bad" title="Connection status">connecting…</span>
-  </header>
+  <div id="layout">
+    <nav id="sidebar" aria-label="Sections">
+      <ul class="nav-list">
+        <li>
+          <button id="navDashboard" class="nav-item is-active" type="button">Dashboard</button>
+        </li>
+      </ul>
 
-  <div id="toolbar">
-    <label>Metric
-      <select id="selMetric"></select>
-    </label>
-    <label>Window
-      <select id="selWindow"></select>
-    </label>
-    <label>Energy
-      <select id="selEnergy"></select>
-    </label>
-    <button id="btnTheme" type="button" title="Toggle light/dark theme">Theme</button>
-    <button id="btnReset" type="button" title="Reset UI settings (clears the cookie)">Reset</button>
-    <span id="ageText" class="muted"></span>
+      <span class="nav-group-title">Channels</span>
+      <ul class="nav-list" id="navChannels"></ul>
+
+      <ul class="nav-list nav-foot">
+        <li>
+          <button id="navSettings" class="nav-item" type="button">Settings</button>
+        </li>
+      </ul>
+    </nav>
+
+    <main id="main">
+      <div id="toolbar">
+        <label>Metric
+          <select id="selMetric"></select>
+        </label>
+        <label>Window
+          <select id="selWindow"></select>
+        </label>
+        <label>Energy
+          <select id="selEnergy"></select>
+        </label>
+        <button id="btnTheme" type="button" title="Toggle light/dark theme">Theme</button>
+        <button id="btnReset" type="button" title="Reset UI settings (clears the cookie)">Reset</button>
+        <span id="ageText" class="muted"></span>
+      </div>
+
+      <section id="cards" aria-label="Channel readings"></section>
+
+      <section id="channelView" aria-label="Channel detail" hidden>
+        <header class="detail-head">
+          <button id="btnBack" class="ghost" type="button" title="Back to the dashboard">← Dashboard</button>
+          <h2 id="detailTitle"></h2>
+          <span id="detailBadge" class="badge"></span>
+        </header>
+        <div id="channelFocus" aria-label="Focused channel"></div>
+      </section>
+
+      <section id="chartBox" aria-label="Live chart">
+        <div id="chart"></div>
+      </section>
+
+      <section id="settingsView" aria-label="Settings" hidden>
+        <h2>Settings</h2>
+        <p class="muted">
+          Chart and appearance choices (metric, time window, energy unit, theme,
+          hidden channels) are made from the toolbar shown on the Dashboard and
+          Channel views and are stored in a <code>pwm_settings</code> browser
+          cookie so they survive reloads. There are no server-side settings to
+          edit here yet.
+        </p>
+        <button id="btnResetS" type="button" title="Reset UI settings (clears the cookie)">Reset UI settings</button>
+      </section>
+    </main>
   </div>
-
-  <section id="cards" aria-label="Channel readings"></section>
-
-  <section id="chartBox" aria-label="Live chart">
-    <div id="chart"></div>
-  </section>
 
   <footer id="foot">
     <p class="muted">

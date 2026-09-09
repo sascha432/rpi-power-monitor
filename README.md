@@ -7,7 +7,7 @@ on a Raspberry Pi and shows the data on a **web dashboard** in your browser:
   computes per-channel voltage / current / power / energy, adds **aggregate
   channels** (rails grouped by a tag), and broadcasts a **raw binary TCP
   stream** (fixed 40-byte frames — easy to consume from C++, scripts, …).
-- **`client/`** — a **stdlib-only Python web server** (no tkinter). Connects to
+- **`client/`** — a **stdlib-only Python web server**. Connects to
   the Pi's raw TCP stream, keeps a rolling history, and serves an offline
   HTML/JS dashboard over HTTP + **WebSocket**. The WebSocket hands the browser
   its config/settings catalog (channels, metrics, units, theme) plus live
@@ -128,6 +128,4 @@ Defaults are filled in with **example wiring**; adjust the channel names, shunt
 values, and addresses to your actual hardware before use.
 
 > Status: server (INA3221 sampling, aggregate energy, raw TCP, MQTT) is
-> implemented; the client is the new web dashboard (replacing the earlier
-> tkinter scaffold).
-
+> implemented; the client is the new web dashboard

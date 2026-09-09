@@ -62,8 +62,8 @@ sampling:
 # MQTT settings
 # ---------------------------------------------------------------------------
 mqtt:
-  host: ~               # disable MQTT (null host or port 0 disables MQTT)
-  #host: localhost
+  #host: ~               # disable MQTT (null host or port 0 disables MQTT)
+  host: localhost
   port: 1883            # set to 0 to disable MQTT as well
   update_interval: 60
   topic_prefix: home

@@ -39,38 +39,6 @@ body {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-#topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 18px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  position: sticky;
-  top: 0;
-  z-index: 5;
-}
-
-#topbar h1 {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
-#connPill {
-  font-size: 0.78rem;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-}
-#connPill.ok  { color: var(--ok);  border-color: var(--ok);  }
-#connPill.bad { color: var(--bad); border-color: var(--bad); }
-
 #toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -178,7 +146,7 @@ button:hover { border-color: var(--accent); }
 }
 .subrow .k { color: var(--muted); margin-right: 3px; }
 
-.energy {
+.card .energy {
   margin-top: 8px;
   padding-top: 6px;
   border-top: 1px dashed var(--border);
@@ -188,7 +156,7 @@ button:hover { border-color: var(--accent); }
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.energy b { color: var(--text); font-weight: 600; }
+.card .energy b { color: var(--text); font-weight: 600; }
 
 #chartBox {
   padding: 14px 18px 6px;
@@ -198,3 +166,203 @@ button:hover { border-color: var(--accent); }
 
 footer { padding: 8px 18px 18px; }
 footer p { margin: 0; line-height: 1.45; }
+
+/* ---- app layout: sidebar + main (no top bar) ------------------------------ */
+#layout {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+#sidebar {
+  flex: 0 0 236px;
+  width: 236px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 10px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+#sidebar .nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#sidebar .nav-list + .nav-list { margin-top: 4px; }
+.nav-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+
+.nav-group-title {
+  display: block;
+  padding: 10px 10px 2px;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.nav-item:hover { background: var(--panel2); border-color: var(--border); }
+.nav-item.is-active {
+  background: var(--panel2);
+  color: var(--accent);
+  border-color: var(--border);
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 600;
+}
+.nav-num {
+  flex: none;
+  min-width: 18px;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.nav-item.is-active .nav-num { color: var(--accent); }
+.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#main { flex: 1 1 auto; min-width: 0; }
+
+/* channel focus view */
+#channelView { padding: 14px 18px 4px; }
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+#detailTitle { margin: 0; font-size: 1.15rem; font-weight: 600; }
+button.ghost { background: transparent; color: var(--muted); }
+
+/* channel focus: single full-width panel for the selected channel */
+#channelFocus { min-width: 0; }
+
+.tcell {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.plot-wrap { position: relative; }
+.cell-plot { width: 100%; }
+.cell-plot canvas { display: block; }
+
+/* big "current value" stat above the main chart (selected metric) */
+.main-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 2px 0 8px;
+}
+.main-stat .ms-val {
+  font-size: 2.4rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.main-stat .ms-unit {
+  font-size: 1.2rem;
+  color: var(--muted);
+}
+
+/* metric tiles under the main graph: each = value + its own mini sparkline */
+.metric-grid {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  padding: 8px 10px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  min-width: 0;
+  min-height: 104px;
+}
+button.metric-tile { cursor: pointer; }
+button.metric-tile:hover { border-color: var(--accent); }
+.metric-tile.energy { position: relative; cursor: default; opacity: 0.92; }
+.metric-tile.energy .mt-spacer { height: 56px; }
+.metric-tile.energy .mt-top {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+.metric-tile.is-active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.metric-tile .mt-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.metric-tile .mt-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-tile .mt-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.metric-tile .mt-plot { width: 100%; }
+.metric-tile .mt-plot canvas { display: block; }
+
+/* settings view */
+#settingsView { padding: 16px 18px; max-width: 720px; }
+#settingsView h2 { margin: 0 0 8px; font-size: 1.2rem; }
+#settingsView code {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+#settingsView .muted { line-height: 1.5; }
