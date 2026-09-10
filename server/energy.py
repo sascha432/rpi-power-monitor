@@ -105,6 +105,7 @@ class EnergyStore:
         """Retention window for the rolling per-day log (today included)."""
         return self._storage_days
 
+    def add(self, channel: str, power_mw: float, dt_s: float) -> Tuple[float, float]:
         """Integrate ``power_mw`` over ``dt_s``; return (session_mwh, total_mwh).
 
         The daily bucket for today (Pi local time) is updated as well. On a
