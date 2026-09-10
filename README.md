@@ -16,6 +16,7 @@ on a Raspberry Pi and shows the data on a **web dashboard** in your browser:
 ## GUI
 
 ![Dashboard UI](docs/images/ui1.png)
+![Channel UI](docs/images/ui2.png)
 
 ## Layout
 
@@ -89,34 +90,44 @@ The dashboard connects to the Pi's raw TCP stream (`connection.host/port`) and
 serves the UI on `web.host:web.port`. See [`docs/client_web.md`](docs/client_web.md)
 for the full configuration guide.
 
-## Run the server as a service (systemd, optional)
+## Run the Pi-side services as systemd units (optional)
 
-To have the server start automatically at boot on the Raspberry Pi, install
-the provided systemd unit (run **on the Pi**, from the repo):
+The repo includes a helper to install either the server service or the web
+client service as a systemd unit. Run these commands **on the Pi** (or on the
+machine where the dashboard should run for the client), from the repo root:
 
 ```bash
+# Server (Raspberry Pi side)
 sudo ./deploy/install-service.sh             # install + enable at boot + start
 systemctl status rpi-power-monitor
 journalctl -u rpi-power-monitor -f           # follow the logs
+
+# Client (dashboard machine)
+sudo ./deploy/install-service.sh --client    # install + enable at boot + start
+systemctl status rpi-power-monitor-client
+journalctl -u rpi-power-monitor-client -f    # follow the logs
 ```
 
-The helper fills in the real paths/user into
-[`deploy/rpi-power-monitor.service`](deploy/rpi-power-monitor.service) and
-installs it as `rpi-power-monitor`. It auto-detects the repo owner (the user
-the service runs as) and a `.venv` python; override with
-`--user`, `--group`, `--python` as needed. Uninstall with
-`sudo ./deploy/install-service.sh --uninstall`.
+The helper fills in the real paths/user into the matching unit template and
+installs it using the right systemd service name. It auto-detects the repo
+owner (the user the service runs as) and a `.venv` python; override with
+`--user`, `--group`, `--python` as needed.
 
-Useful systemd facts for this unit:
+- Server uninstall: `sudo ./deploy/install-service.sh --uninstall`
+- Client uninstall: `sudo ./deploy/install-service.sh --client --uninstall`
 
-- It runs `python -m server` from the repo root (working directory), so the
-  top-level `server` / `shared` packages and `config/server.yaml` +
-  `state/energy.json` resolve as usual.
-- The server is stopped with **SIGINT** (`KillSignal=SIGINT`), which the code
-  turns into `KeyboardInterrupt` so it saves energy totals and closes sockets
-  cleanly. `Restart=always` revives it after a crash.
-- The service user must be a member of the `i2c` group to open `/dev/i2c-1`
-  (the default Raspberry Pi OS user usually already is):
+Useful systemd facts for the units:
+
+- The server unit runs `python -m server` from the repo root (working
+  directory), so the top-level `server` / `shared` packages and
+  `config/server.yaml` + `state/energy.json` resolve as usual.
+- The client unit runs `python -m client` from the repo root, so the
+  `client` / `shared` packages and `config/client.yaml` resolve correctly.
+- Both units are stopped with **SIGINT** (`KillSignal=SIGINT`), which the code
+  turns into `KeyboardInterrupt` so they can shut down cleanly. `Restart=always`
+  revives them after a crash.
+- The server service user must be a member of the `i2c` group to open
+  `/dev/i2c-1` (the default Raspberry Pi OS user usually already is):
   `sudo usermod -aG i2c <user>` (then reboot).
 
 ## Configuration
