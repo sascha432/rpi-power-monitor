@@ -43,7 +43,7 @@ from .sensor.ina3221 import Ina3221
 LOGGER = logging.getLogger("server.main")
 
 AGGREGATE_ID_BASE = 100  # aggregate channel ids = 100 + index (rails keep 1..3)
-SAVE_EVERY_CYCLES = 20   # persist energy totals every N samples
+SAVE_EVERY_SECONDS = 30.0  # persist energy totals every 30 seconds
 
 
 def _millis() -> int:
@@ -231,7 +231,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         LOGGER.info("MQTT disabled (host not set or port is 0)")
 
     last_read: Optional[float] = None
-    cycles = 0
+    last_save_time = time.monotonic()
     # Let the first averaged conversion complete before the first read.
     time.sleep(interval_s)
 
@@ -243,7 +243,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
             dt_s = (now - last_read) if last_read is not None else 0.0
             last_read = now
-            cycles += 1
             ts_ms = _millis()
 
             # Aggregate power = sum of the member rails' instantaneous power.
@@ -300,8 +299,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     )
                 mqtt_pub.publish_due(now)
 
-            if cycles % SAVE_EVERY_CYCLES == 0:
+            if time.monotonic() - last_save_time >= SAVE_EVERY_SECONDS:
                 energy.save()
+                last_save_time = time.monotonic()
 
             # Pace to the sensor's fresh-value cadence.
             elapsed = time.monotonic() - cycle_start
@@ -309,14 +309,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if wait > 0.0:
                 time.sleep(wait)
     except KeyboardInterrupt:
-        print("\nInterrupted. Final energy totals:")
-        for name in rail_names + tags:
-            prefix = "Σ " if name in tags else ""
-            print(
-                f"  {prefix}{name:<12} "
-                f"{session_mwh.get(name, 0.0) / 1000.0:12.4f} Wh "
-                f"(total {total_mwh.get(name, 0.0) / 1000.0:12.4f} Wh)"
-            )
+        print("\nInterrupted")
         energy.save()
         return 0
     except OSError as exc:
