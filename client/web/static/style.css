@@ -61,17 +61,25 @@ button:hover { border-color: var(--accent); }
 
 #cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 12px;
-  padding: 14px 18px 4px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+  padding: 10px 14px 4px;
 }
 
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
-  padding: 10px 12px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.stats-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -79,27 +87,28 @@ button:hover { border-color: var(--accent); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .card-name {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .badge {
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 1px 4px;
   flex: none;
 }
 
@@ -107,7 +116,7 @@ button:hover { border-color: var(--accent); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--muted);
   cursor: pointer;
   flex: none;
@@ -117,28 +126,46 @@ button:hover { border-color: var(--accent); }
 .power {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  margin: 2px 0 6px;
+  gap: 5px;
+  margin: 0;
 }
-.power .val { font-size: 1.7rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.power .unit { color: var(--muted); font-size: 0.85rem; }
+.power .val {
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+.power .unit { color: var(--muted); font-size: 0.68rem; }
 
 .subrow {
   display: flex;
-  gap: 14px;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
   font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-  color: var(--text);
+  font-size: 0.82rem;
+  color: var(--muted);
+  min-width: 0;
 }
-.subrow .k { color: var(--muted); margin-right: 3px; }
+.subrow .metric-group { display: inline-flex; align-items: baseline; gap: 2px; }
+.subrow .metric-value {
+  white-space: nowrap;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+.subrow .metric-unit { white-space: nowrap; color: var(--muted); font-size: 0.82rem; }
 
 .card .energy {
-  margin-top: 8px;
-  padding-top: 6px;
+  margin-top: 6px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }

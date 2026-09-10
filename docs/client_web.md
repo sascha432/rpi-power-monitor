@@ -78,8 +78,8 @@ channels:
   - {id: 1,   name: 12V Input,  kind: rail,      aggregate: 12v_rail}
   - {id: 2,   name: 12V NAS,    kind: rail,      aggregate: 12v_rail}
   - {id: 3,   name: 5V Input,   kind: rail,      aggregate: 5v_rail}
-  - {id: 100, name: 12v_rail,   label: "12V Rail (total)", kind: aggregate}
-  - {id: 101, name: 5v_rail,    label: "5V Rail (total)",  kind: aggregate}
+  - {id: 100, name: 12v_rail,   label: "12V Rail", kind: aggregate}
+  - {id: 101, name: 5v_rail,    label: "5V Rail",  kind: aggregate}
 ```
 
 `kind` decides what is shown: `rail` → voltage/current/power; `aggregate` →

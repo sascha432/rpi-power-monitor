@@ -100,12 +100,25 @@ function clearCookie() {
 }
 
 // ---- number formatting -------------------------------------------------------
-function fmtW(w) {
+function fmtWParts(w) {
   const a = Math.abs(w);
-  if (a < 1) return w.toFixed(3) + " W";
-  if (a < 100) return w.toFixed(2) + " W";
-  if (a < 10000) return w.toFixed(1) + " W";
-  return (w / 1000).toFixed(2) + " kW";
+  if (a < 1) return { num: w.toFixed(3), unit: "W" };
+  if (a < 100) return { num: w.toFixed(2), unit: "W" };
+  if (a < 10000) return { num: w.toFixed(1), unit: "W" };
+  return { num: (w / 1000).toFixed(2), unit: "kW" };
+}
+function fmtW(w) {
+  const parts = fmtWParts(w);
+  return parts.num + " " + parts.unit;
+}
+function fmtAParts(a) {
+  const v = S.settings.currentUnit === "mA" ? a * 1000 : a;
+  if (S.settings.currentUnit === "mA") {
+    const x = Math.abs(v);
+    return { num: (x < 100 ? v.toFixed(1) : String(Math.round(v))), unit: "mA" };
+  }
+  const x = Math.abs(v);
+  return { num: x < 0.1 ? v.toFixed(3) : v.toFixed(2), unit: "A" };
 }
 function fmtEnergy(wh) {
   if (S.settings.energyUnit === "kWh") {
@@ -246,8 +259,10 @@ function createCards() {
           <input type="checkbox" ${S.settings.hidden.includes(ch.id) ? "" : "checked"}>
         </label>
       </header>
-      <div class="power"><span class="val">--</span><span class="unit">W</span></div>
-      <div class="subrow"></div>
+      <div class="stats-line">
+        <div class="subrow"></div>
+        <div class="power"><span class="val">--</span><span class="unit">W</span></div>
+      </div>
       <div class="energy">
         <span>total <b class="total">--</b></span>
       </div>`;
@@ -256,8 +271,11 @@ function createCards() {
     const cb = card.querySelector(".plot-toggle input");
     cb.addEventListener("change", () => setHidden(ch.id, !cb.checked));
 
+    card.querySelector(".card-name").addEventListener("click", () => setView("channel", ch.id));
+
     S.el[ch.id] = {
       power: card.querySelector(".power .val"),
+      unit: card.querySelector(".power .unit"),
       subrow: card.querySelector(".subrow"),
       total: card.querySelector(".total"),
     };
@@ -285,25 +303,26 @@ function renderCard(id) {
 function updateCardEls(ref, meta) {
   if (!ref || !meta) return;
   const last = meta.last;
-  ref.power.textContent = last.w === null ? "--" : fmtW(last.w);
+  const powerParts = last.w === null ? { num: "--", unit: "W" } : fmtWParts(last.w);
+  ref.power.textContent = powerParts.num;
+  ref.power.style.color = metricColor("power_w");
+  ref.unit.textContent = powerParts.unit;
+
   if (meta.kind === "rail") {
-    const v = last.v === null ? "--" : last.v.toFixed(2) + " V";
-    const a = last.a === null ? "--" : fmtA(last.a);
-    ref.subrow.innerHTML = `<span><span class="k">V</span>${v}</span><span><span class="k">A</span>${a}</span>`;
+    const v = last.v === null ? "--" : last.v.toFixed(2);
+    const aParts = last.a === null ? { num: "--", unit: S.settings.currentUnit === "mA" ? "mA" : "A" } : fmtAParts(last.a);
+    ref.subrow.innerHTML = `
+      <span class="metric-group"><span class="metric-value" style="color:${metricColor("voltage_v")}">${v}</span><span class="metric-unit">V</span></span>
+      <span class="metric-group"><span class="metric-value" style="color:${metricColor("current_a")}">${aParts.num}</span><span class="metric-unit">${aParts.unit}</span></span>`;
   } else {
-    ref.subrow.innerHTML = `<span class="muted">aggregate power only</span>`;
+    ref.subrow.innerHTML = "";
   }
   ref.total.textContent = fmtEnergy(last.t || 0);
 }
 // Format current honouring the user's current unit (A default | mA).
 function fmtA(a) {
-  const v = S.settings.currentUnit === "mA" ? a * 1000 : a;
-  if (S.settings.currentUnit === "mA") {
-    const x = Math.abs(v);
-    return (x < 100 ? v.toFixed(1) : String(Math.round(v))) + " mA";
-  }
-  const x = Math.abs(v);
-  return x < 0.1 ? v.toFixed(3) + " A" : v.toFixed(2) + " A";
+  const parts = fmtAParts(a);
+  return parts.num + " " + parts.unit;
 }
 function metricUnit(key) {
   const m = (S.catalog && S.catalog.metrics) ? S.catalog.metrics[key] : null;

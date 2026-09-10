@@ -79,10 +79,10 @@ channels:
   # Aggregates: id = 100 + index over SORTED aggregate tags.
   - id: 100
     name: 12v_rail
-    label: 12V Rail (total)
+    label: 12V Rail
     kind: aggregate
   - id: 101
     name: 5v_rail
-    label: 5V Rail (total)
+    label: 5V Rail
     kind: aggregate
 
