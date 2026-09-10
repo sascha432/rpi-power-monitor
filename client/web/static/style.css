@@ -11,6 +11,7 @@
   --border: #2c3142;
   --grid: #2b3140;
   --axis: #5a6172;
+  --cursor: #607d8b; /* uPlot crosshair (its CSS default is hard-coded) */
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
@@ -26,6 +27,7 @@ html[data-theme="light"] {
   --border: #d7dce6;
   --grid: #dde2ec;
   --axis: #9aa2b4;
+  --cursor: #c6ccd8; /* uPlot crosshair (its CSS default is hard-coded) */
   --shadow: 0 1px 3px rgba(20, 30, 60, 0.12);
 }
 
@@ -55,6 +57,10 @@ select, button {
   cursor: pointer;
 }
 select:focus, button:focus { outline: 1px solid var(--accent); }
+/* ...but a mouse click must not leave a control looking selected (e.g. the menu
+   toggle after collapsing the sidebar). Keyboard focus still shows the ring;
+   browsers without :focus-visible just keep the rule above. */
+select:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 button:hover { border-color: var(--accent); }
 
 .muted { color: var(--muted); font-size: 0.8rem; }
@@ -75,6 +81,11 @@ button:hover { border-color: var(--accent); }
   min-width: 0;
 }
 
+/* uPlot ships its crosshair colour hard-coded (#607D8B), which reads as a
+   dark line on the light theme - keep it in step with the theme instead. */
+.u-hz .u-cursor-x, .u-vt .u-cursor-y { border-right-color: var(--cursor); }
+.u-hz .u-cursor-y, .u-vt .u-cursor-x { border-bottom-color: var(--cursor); }
+
 .stats-line {
   display: flex;
   align-items: baseline;
@@ -82,6 +93,9 @@ button:hover { border-color: var(--accent); }
   gap: 6px;
   min-width: 0;
 }
+/* Aggregate cards have no V/A subrow: hide it so the power value starts at the
+   card padding instead of leaving an empty flex gap in front of it. */
+.subrow:empty { display: none; }
 
 .card header {
   display: flex;
@@ -283,13 +297,33 @@ footer p { margin: 0; line-height: 1.45; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 62px 10px 14px; /* top space clears the fixed menu toggle */
+  padding: 10px 10px 14px; /* the fixed nav toggle sits in the brand row */
   background: var(--panel);
   border-right: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
 
-/* Collapsible sidebar: toggles to a single fixed menu icon at the top-left. */
+/* Brand row: a spacer where the fixed #navToggle lands + the app title. */
+.nav-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin-bottom: 6px;
+}
+.nav-head-ic { flex: 0 0 40px; width: 40px; height: 40px; }
+.nav-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsible sidebar toggle. Open: a flat icon inside the sidebar brand row. */
 .nav-toggle {
   position: fixed;
   top: 10px;
@@ -301,13 +335,18 @@ footer p { margin: 0; line-height: 1.45; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel2);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
   color: var(--text);
+  box-shadow: none;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease,
+              border-radius 0.15s ease, width 0.18s ease,
+              height 0.18s ease, top 0.18s ease, left 0.18s ease;
 }
-.nav-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.nav-toggle:hover { background: var(--panel2); color: var(--accent); }
 .nav-toggle .ic {
   width: 22px;
   height: 22px;
@@ -317,12 +356,25 @@ footer p { margin: 0; line-height: 1.45; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* open: chevron; closed: hamburger */
+/* open: collapse chevron; closed: sidebar (panel) glyph */
 body:not(.nav-closed) .nav-toggle .ic-menu { display: none; }
 body.nav-closed .nav-toggle .ic-collapse { display: none; }
 
+/* Collapsed: the toggle becomes a small arrow in the left gutter that opens
+   the menu. Its box is only 13px wide, so it stays inside the section padding
+   (the tightest is #cards at 14px) - it never covers content, while no space
+   is reserved for it (see body.nav-closed #main, which has no padding). */
 body.nav-closed #sidebar { display: none; }
-body.nav-closed #main { padding-left: 56px; } /* clear the fixed icon */
+body.nav-closed .nav-toggle {
+  top: 10px;
+  left: 0;
+  width: 13px;
+  height: 40px;
+  border-radius: 0 8px 8px 0;
+  color: var(--muted);
+}
+body.nav-closed .nav-toggle:hover { color: var(--accent); }
+body.nav-closed .nav-toggle .ic-menu { width: 6px; height: 14px; }
 
 #sidebar .nav-list {
   list-style: none;

@@ -11,17 +11,22 @@
   <div id="layout">
     <button id="navToggle" class="nav-toggle" type="button"
             title="Toggle menu" aria-label="Toggle sidebar" aria-expanded="true">
-      <svg class="ic ic-menu" viewBox="0 0 24 24" aria-hidden="true">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+      <svg class="ic ic-menu" viewBox="0 0 6 14" aria-hidden="true">
+        <polyline points="1.25 1.5 4.5 7 1.25 12.5"/>
       </svg>
       <svg class="ic ic-collapse" viewBox="0 0 24 24" aria-hidden="true">
-        <polyline points="15 18 9 12 15 6"/>
+        <line x1="4.5" y1="5.5" x2="4.5" y2="18.5"/>
+        <polyline points="15.5 8.5 12 12 15.5 15.5"/>
       </svg>
     </button>
 
     <nav id="sidebar" aria-label="Sections">
+      <!-- Brand row: the fixed #navToggle lands on the spacer, then the title. -->
+      <div class="nav-head">
+        <span class="nav-head-ic" aria-hidden="true"></span>
+        <span class="nav-title">Power Monitor</span>
+      </div>
+
       <ul class="nav-list">
         <li>
           <button id="navDashboard" class="nav-item is-active" type="button">

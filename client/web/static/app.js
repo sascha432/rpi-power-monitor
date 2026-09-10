@@ -131,6 +131,18 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// Colours for the non-data chart lines (axis spline + tick marks + grid). The
+// CSS variables normally supply these, but if one resolves to "" uPlot strokes
+// the line with the canvas default - i.e. BLACK, which looks wrong in the light
+// theme - so fall back to an explicit pair per theme.
+function chartLineColors() {
+  const light = document.documentElement.dataset.theme === "light";
+  return {
+    axis: cssVar("--axis") || (light ? "#9aa2b4" : "#5a6172"),
+    grid: cssVar("--grid") || (light ? "#dde2ec" : "#2b3140"),
+  };
+}
+
 // ---- settings ------------------------------------------------------------------
 function applyCatalogDefaults(cat) {
   S.catalog = cat;
@@ -532,8 +544,7 @@ function makeFocusPlot(box, meta, metricKey, big) {
   };
 
   if (big) {
-    const axis = cssVar("--axis");
-    const grid = cssVar("--grid");
+    const { axis, grid } = chartLineColors();
     opts.axes = [
       { stroke: axis, grid: { stroke: grid }, ticks: { stroke: axis } },
       {
@@ -1159,8 +1170,7 @@ function makeDashPlot(m, panel) {
   if (!chs.length) return null;
   const width = Math.max(240, box.clientWidth || 320);
   const height = 210;
-  const axis = cssVar("--axis");
-  const grid = cssVar("--grid");
+  const { axis, grid } = chartLineColors();
   const series = [{ label: "time" }];
   chs.forEach((ch) => {
     series.push({
