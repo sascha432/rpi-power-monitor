@@ -3,24 +3,29 @@
 # rpi-power-monitor — install / manage the systemd service (run ON the Pi)
 #
 # Usage:
-#   sudo ./deploy/install-service.sh              # install + enable + start
+#   sudo ./deploy/install-service.sh              # install + enable + start server
+#   sudo ./deploy/install-service.sh --client     # install + enable + start client
 #   sudo ./deploy/install-service.sh --no-start   # install + enable only
 #   sudo ./deploy/install-service.sh --no-enable  # install + start only
-#   sudo ./deploy/install-service.sh --uninstall  # stop, disable, remove
+#   sudo ./deploy/install-service.sh --uninstall  # stop, disable, remove server
+#   sudo ./deploy/install-service.sh --client --uninstall  # remove client service
 #
 # Options:
-#   --user NAME      run the service as NAME     (default: repo owner)
-#   --group NAME     run the service as GROUP    (default: repo owner group)
-#   --python PATH    venv python for ExecStart   (default: auto-detected)
-#   -h, --help       show this help
+#   --server          install the server service (default)
+#   --client          install the client service
+#   --user NAME       run the service as NAME     (default: repo owner)
+#   --group NAME      run the service as GROUP    (default: repo owner group)
+#   --python PATH     venv python for ExecStart   (default: auto-detected)
+#   -h, --help        show this help
 # =============================================================================
 set -euo pipefail
 
+TARGET="server"
 SERVICE_NAME="rpi-power-monitor.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SRC_UNIT="${SCRIPT_DIR}/${SERVICE_NAME}"
-DEST_UNIT="/etc/systemd/system/${SERVICE_NAME}"
+SRC_UNIT=""
+DEST_UNIT=""
 
 DO_ENABLE=1
 DO_START=1
@@ -35,6 +40,8 @@ usage() {
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --server)     TARGET="server" ;;
+        --client)     TARGET="client" ;;
         --no-start)   DO_START=0 ;;
         --no-enable)  DO_ENABLE=0 ;;
         --uninstall)  DO_UNINSTALL=1 ;;
@@ -46,6 +53,22 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+case "${TARGET}" in
+    server)
+        SERVICE_NAME="rpi-power-monitor.service"
+        ;;
+    client)
+        SERVICE_NAME="rpi-power-monitor-client.service"
+        ;;
+    *)
+        echo "ERROR: unknown target '${TARGET}'." >&2
+        exit 2
+        ;;
+esac
+
+SRC_UNIT="${SCRIPT_DIR}/${SERVICE_NAME}"
+DEST_UNIT="/etc/systemd/system/${SERVICE_NAME}"
 
 # -- auto-detect defaults ---------------------------------------------------
 
@@ -127,6 +150,9 @@ echo "Next steps:"
 echo "  systemctl status ${SERVICE_NAME}"
 echo "  journalctl -u ${SERVICE_NAME} -f"
 echo
-echo "Note: the service user needs to be a member of the 'i2c' group to open"
-echo "the INA3221 bus. If startup fails with a sensor/I2C error, run:"
-echo "  sudo usermod -aG i2c ${SERVICE_USER}   # then reboot"
+
+if [ "${TARGET}" = "server" ]; then
+    echo "Note: the service user needs to be a member of the 'i2c' group to open"
+    echo "the INA3221 bus. If startup fails with a sensor/I2C error, run:"
+    echo "  sudo usermod -aG i2c ${SERVICE_USER}   # then reboot"
+fi

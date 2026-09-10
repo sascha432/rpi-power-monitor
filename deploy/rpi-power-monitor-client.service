@@ -1,0 +1,55 @@
+# ============================================================================
+# rpi-power-monitor — systemd service (web dashboard client)
+#
+# This file is a TEMPLATE: the __TOKEN__ placeholders are filled in by
+#   deploy/install-service.sh
+# which copies the result to /etc/systemd/system/rpi-power-monitor-client.service.
+# You can also copy it manually and edit the values yourself.
+#
+# Install / manage (run on the machine where the dashboard should live):
+#   sudo ./deploy/install-service.sh --client            # install + enable + start
+#   systemctl status rpi-power-monitor-client
+#   journalctl -u rpi-power-monitor-client -f          # follow the log
+#   sudo systemctl restart rpi-power-monitor-client
+# ============================================================================
+
+[Unit]
+Description=Power monitor dashboard client (web UI + TCP reader)
+# Start once the network is up, so the client can connect to the Pi as soon as
+# it is reachable.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+
+# Service user/group.
+User=__USER__
+Group=__GROUP__
+
+# Repo root - `python -m client` is run from here so the top-level `client`,
+# `server`, and `shared` packages are importable, and config paths resolve.
+WorkingDirectory=__REPO_DIR__
+
+# venv python that has requirements/client.txt installed (PyYAML), e.g.
+# <repo>/.venv/bin/python
+ExecStart=__PYTHON__ -m client
+
+# Keep stderr logging streaming into the journal.
+Environment=PYTHONUNBUFFERED=1
+
+# Restart on crash / network hiccup, but not on an explicit systemctl stop.
+Restart=always
+RestartSec=5
+
+# The client can exit cleanly on SIGINT, so use SIGINT for graceful shutdown.
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+# The client writes to stderr via logging.basicConfig; the journal is the log.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rpi-power-monitor-client
+
+[Install]
+WantedBy=multi-user.target
