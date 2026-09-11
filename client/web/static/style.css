@@ -356,9 +356,9 @@ footer p { margin: 0; line-height: 1.45; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* open: collapse chevron; closed: sidebar (panel) glyph */
-body:not(.nav-closed) .nav-toggle .ic-menu { display: none; }
-body.nav-closed .nav-toggle .ic-collapse { display: none; }
+/* open: hamburger menu glyph; collapsed: small arrow in the left gutter */
+body:not(.nav-closed) .nav-toggle .ic-arrow { display: none; }
+body.nav-closed .nav-toggle .ic-menu { display: none; }
 
 /* Collapsed: the toggle becomes a small arrow in the left gutter that opens
    the menu. Its box is only 13px wide, so it stays inside the section padding
@@ -374,7 +374,7 @@ body.nav-closed .nav-toggle {
   color: var(--muted);
 }
 body.nav-closed .nav-toggle:hover { color: var(--accent); }
-body.nav-closed .nav-toggle .ic-menu { width: 6px; height: 14px; }
+body.nav-closed .nav-toggle .ic-arrow { width: 6px; height: 14px; }
 
 #sidebar .nav-list {
   list-style: none;
