@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from datetime import date
 from typing import Dict, List, Optional, Tuple
 
 from shared.binary import (
@@ -139,8 +140,12 @@ def _make_daily_block(
     sends this once per connection so a dashboard can render a
     daily-consumption chart of configurable length; today's value frame also
     carries the matching all-time total so the current-day bar stays live from
-    the cumulative total already present in every sample frame (no need to
-    re-send the daily block).
+    the cumulative total already present in every sample frame.
+
+    It is also re-broadcast to every connected client at each Pi-local
+    calendar-day rollover: the block's date/values are frozen when it is built,
+    so a client that stays connected across midnight would otherwise keep
+    rendering *yesterday* as "today" (see :func:`main`).
     """
     n = min(energy.storage_days, DAILY_MAX)
     today, per_day, totals = energy.last_days(n)
@@ -207,8 +212,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         max_clients=cfg.max_clients,
         allowed_clients=cfg.allowed_clients,
     )
-    # Send the last-7-days energy history once to every new client, right on
-    # connect (before any sample), so dashboards can draw a daily chart.
+    # Send the per-day energy history once to every new client, right on
+    # connect (before any sample), so dashboards can draw a daily chart. The
+    # same block is re-broadcast at each calendar-day rollover (see the sample
+    # loop) so already-connected clients roll their chart forward at midnight.
     tcp.set_connect_payload(lambda: _make_daily_block(energy, rails, tags))
     tcp.start()
 
@@ -232,6 +239,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     last_read: Optional[float] = None
     last_save_time = time.monotonic()
+    last_day = date.today().isoformat()  # drives the midnight daily-block re-send
     # Let the first averaged conversion complete before the first read.
     time.sleep(interval_s)
 
@@ -279,6 +287,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                     energy_milliwatthours_total=round(total_mwh[tag]),
                 )
             tcp.broadcast(bytes(frame))
+
+            # The daily block is only built on connect, so its date/values are
+            # frozen at connect time: a client that stays connected across
+            # midnight would keep labelling yesterday as "today". Detect the
+            # Pi-local calendar-day rollover and re-broadcast a fresh block so
+            # every connected dashboard rolls its daily chart forward.
+            today_iso = date.today().isoformat()
+            if today_iso != last_day:
+                last_day = today_iso
+                LOGGER.info(
+                    "Calendar day rolled over to %s - re-broadcasting daily energy block",
+                    today_iso,
+                )
+                try:
+                    tcp.broadcast(_make_daily_block(energy, rails, tags))
+                except Exception as exc:  # noqa: BLE001 - never kill sampling
+                    LOGGER.warning("Could not re-broadcast daily block: %s", exc)
 
             # Feed MQTT averages; publish only when mqtt.update_interval elapsed.
             if mqtt_pub is not None:
