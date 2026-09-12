@@ -35,17 +35,17 @@ sensor:
       name: 12V Input
       voltage: 12.0
       shunt_milliohm: 25.0
-      aggregate: 12v_rail     # aggregate channel for 12V rail (5v buck converter and 12v pi input)
+      aggregate: 12V Rail     # aggregate channel for 12V rail (5v buck converter and 12v pi input)
     - channel: 2
       name: 12V NAS
       voltage: 12.0
       shunt_milliohm: -25.0   # negative shunt value to reverse current direction
-      aggregate: 12v_rail     # aggregate channel for 12V rail (12v NAS output)
+      aggregate: 12V Rail     # aggregate channel for 12V rail (12v NAS output)
     - channel: 3
-      name: 5V Input
+      name: 5V Output
       voltage: 5.0
       shunt_milliohm: 25.0
-      aggregate: 5v_rail      # aggregate channel for 5V rail (buck converter on channel 1)
+      aggregate: 5V Rail      # aggregate channel for 5V rail (buck converter on channel 1)
 
 # ---------------------------------------------------------------------------
 # INA3221 Sampling
@@ -53,14 +53,16 @@ sensor:
 sampling:
   # Poll period is NOT configured here - it is derived from the chip timing:
   #   interval = averaging * (bus_conversion_us + shunt_conversion_us)
-  averaging: 64             # INA3221 averaging mode: 1|4|16|64|128|256|1024
-  bus_conversion_us: 1100   # INA3221 bus-voltage conversion time
-  shunt_conversion_us: 1100 # INA3221 shunt-voltage conversion time
+  averaging: 16               # INA3221 averaging mode: 1|4|16|64|128|256|512|1024
+  bus_conversion_us: 4156     # INA3221 bus-voltage conversion time
+  shunt_conversion_us: 4156   # INA3221 shunt-voltage conversion time
   # valid conversion times: 140|204|332|588|1100|2116|4156|8244 us
 
 energy:
   storage_days: 90        # rolling per-day log: days of daily energy kept in state/energy.json
                           # (the dashboard can display 7-90 days of daily energy)
+  archive: true           # hourly snapshot of state/energy.json appended to
+                          # state/energy.json.tar as energy-YYYYmmddHHMMSS.json
 
 # ---------------------------------------------------------------------------
 # MQTT settings
@@ -82,12 +84,12 @@ mqtt:
     - name: "12V NAS"
       topic: 12v_nas
       units: ["V", "A", "W", "kWh"]
-    - name: "5V Input"
-      topic: 5v_input
+    - name: "5V Output"
+      topic: 5v_output
       units: ["V", "A", "W", "kWh"]
-    - name: "12v_rail"
+    - name: "12V Rail"
       topic: aggregated_12v
       units: ["V", "A", "W", "kWh"]
-    - name: "5v_rail"
+    - name: "5V Rail"
       topic: aggregated_5v
       units: ["V", "A", "W", "kWh"]

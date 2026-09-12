@@ -37,12 +37,14 @@ rpi-power-monitor/
 │   └── install-service.sh
 ├── shared/                  # code shared by both sides (contract only)
 │   ├── binary.py            #   40-byte binary frame pack/unpack
+│   ├── catalog.py           #   channel ids/names (from config/server.yaml)
 │   ├── models.py            #   legacy JSON-Lines data model (unused)
 │   └── protocol.py          #   legacy JSON-Lines framing (unused)
 ├── server/                  # Raspberry Pi side
 │   ├── main.py              #   entry point (read + broadcast + MQTT)
 │   ├── config.py            #   typed loader for config/server.yaml
 │   ├── energy.py            #   per-channel Wh counters (+JSON persistence)
+│   ├── archive.py           #   hourly state snapshots -> energy.json.tar
 │   ├── mqtt.py              #   optional MQTT publisher
 │   ├── sensor/
 │   │   ├── base.py          #   PowerSensor interface
@@ -63,7 +65,7 @@ rpi-power-monitor/
 ├── docs/
 │   ├── protocol.md          # TCP wire protocol specification (binary)
 │   └── client_web.md        # web dashboard: how to run & configure
-└── state/                   # energy.json persistence (gitignored)
+└── state/                   # energy.json + energy.json.tar archive (gitignored)
 ```
 
 ## Quick start
@@ -136,8 +138,8 @@ Useful systemd facts for the units:
   address, physical shunts (name / nominal voltage / shunt / aggregate tag),
   sampling, MQTT (optional).
 - `config/client.yaml` — Pi address, dashboard bind host/port, display defaults,
-  and the **channel table** that must mirror the rails/aggregates in
-  `server.yaml` (the binary wire carries ids only, never names).
+  and `server_config` (the `server.yaml` the dashboard reads its channel
+  ids/names from — the binary wire carries ids only, never names).
 
 Defaults are filled in with **example wiring**; adjust the channel names, shunt
 values, and addresses to your actual hardware before use.

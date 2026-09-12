@@ -12,7 +12,9 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional
 
-from .config import ChannelConfig, ClientConfig
+from shared.catalog import ChannelInfo
+
+from .config import ClientConfig
 
 # Canonical value order used on the wire to the browser (history + sample):
 # (t, voltage_v, current_a, power_w, session_wh, total_wh)
@@ -40,7 +42,7 @@ class DataStore:
 
     def __init__(self, config: ClientConfig) -> None:
         self._max_points: int = max(2, config.display.history_points)
-        self.channels: Dict[int, ChannelConfig] = config.channel_map()
+        self.channels: Dict[int, ChannelInfo] = config.channel_map()
         self._lock = threading.Lock()
         self._series: Dict[int, Deque[Reading]] = {
             cid: deque(maxlen=self._max_points) for cid in self.channels

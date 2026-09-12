@@ -52,7 +52,7 @@ const S = {
   piConnected: false,
   lastSample: 0,
   timeline: [], // shared x axis (epoch s), one entry per sample tick
-  channels: [], // ordered ChannelConfig list from the catalog
+  channels: [], // ordered channel list from the catalog (derived from server.yaml)
   meta: {},     // id -> { name,label,kind,metrics,color, v:[],a:[],w:[], last:{...} }
   el: {},       // id -> card DOM refs
   settings: {

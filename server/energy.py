@@ -23,6 +23,10 @@ calendar-day rollover) it is pruned to the newest ``storage_days`` days from
 filled with zero buckets so the log stays contiguous (a powered-off Pi really
 used ~0). Legacy v1 files (a flat ``{channel: mWh}`` total map) migrate to v2
 automatically on the first save.
+
+With ``energy.archive: true`` an hourly snapshot of this document is also
+appended to ``state/energy.json.tar`` (see ``server.archive``); that file is
+never read back by the server - it is an operator-facing history log.
 """
 from __future__ import annotations
 
@@ -44,6 +48,15 @@ STATE_VERSION = 2
 def _iso_today() -> str:
     """Today's date (Pi local time) as ``YYYY-MM-DD`` - a daily bucket key."""
     return date.today().isoformat()
+
+
+def dump_state(payload: Dict[str, object]) -> str:
+    """Serialise a state document exactly as :meth:`EnergyStore.save` does.
+
+    Shared so the hourly tar snapshots (see ``server.archive``) are
+    byte-identical to ``state/energy.json`` itself.
+    """
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
 class EnergyStore:
@@ -167,13 +180,19 @@ class EnergyStore:
             return today, per_day, totals
 
 
-    def save(self) -> None:
-        """Persist the all-time totals + the rolling per-day log."""
+    def payload(self) -> Dict[str, object]:
+        """Return the state document :meth:`save` would write right now.
+
+        Rolls the store forward / prunes first, so the document is current even
+        between the periodic saves - used by the hourly tar archiver so a
+        snapshot never lags behind ``state/energy.json`` by more than the save
+        period.
+        """
         with self._lock:
             today = _iso_today()
             if today != self._today:
                 self._rollover_locked(today)
-            payload = {
+            return {
                 "version": STATE_VERSION,
                 "total_mwh": {
                     name: round(self._total[name], 6) for name in sorted(self._total)
@@ -183,10 +202,19 @@ class EnergyStore:
                     for day, bucket in sorted(self._days.items())
                 },
             }
+
+    @property
+    def archive_file(self) -> Path:
+        """``state/energy.json.tar`` - hourly tar snapshots of the state file."""
+        return self._state_file.with_suffix(self._state_file.suffix + ".tar")
+
+    def save(self) -> None:
+        """Persist the all-time totals + the rolling per-day log."""
+        payload = self.payload()
         try:
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._state_file.with_suffix(self._state_file.suffix + ".tmp")
-            tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            tmp.write_text(dump_state(payload), encoding="utf-8")
             tmp.replace(self._state_file)
         except OSError as exc:
             LOGGER.warning("Could not save energy state %s: %s", self._state_file, exc)

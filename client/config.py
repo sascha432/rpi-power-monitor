@@ -8,17 +8,27 @@ The client is a **stdlib web dashboard**:
 * it connects to the Pi's raw TCP binary stream (``shared.binary`` frames),
 * keeps a rolling in-memory history per channel, and
 * serves an HTML/JS page over HTTP + WebSocket. The WebSocket delivers the UI
-  "catalog" (available channels / metrics / units / theme / cadence, built from
-  this file) plus history and live samples; the browser stores the user's UI
-  choices in a cookie.
+  "catalog" (available channels / metrics / units / theme / cadence) plus
+  history and live samples; the browser stores the user's UI choices in a
+  cookie.
+
+The **channel set is not configured here**: the binary wire carries ids only,
+so the ids/names are derived from the server's own ``server.yaml``
+(``shared.catalog``) - see ``server_config`` below.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+
+from shared.catalog import (
+    DEFAULT_SERVER_CONFIG_PATH,
+    ChannelInfo,
+    load_catalog,
+)
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "client.yaml"
 
@@ -48,23 +58,6 @@ class ConnectionConfig:
 
 
 @dataclass
-class ChannelConfig:
-    id: int              # wire channel_id: rails 1..3, aggregates 100+ (see server.yaml)
-    name: str            # matches the server's rail name / aggregate tag
-    label: str = ""      # friendly name for the UI; defaults to ``name``
-    kind: str = "rail"   # "rail" | "aggregate"
-    aggregate: str = ""  # for rails: the aggregate tag this rail feeds (informational)
-
-    @property
-    def display_name(self) -> str:
-        return self.label or self.name
-
-    @property
-    def metrics(self) -> List[str]:
-        return metrics_for(self.kind)
-
-
-@dataclass
 class WebConfig:
     host: str = "0.0.0.0"   # bind address for the dashboard HTTP + WebSocket server
     port: int = 8080        # point a browser at http://<host>:<port>/
@@ -87,20 +80,32 @@ class ClientConfig:
     connection: ConnectionConfig = field(default_factory=ConnectionConfig)
     web: WebConfig = field(default_factory=WebConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
-    channels: List[ChannelConfig] = field(default_factory=list)
+    #: Channel catalog derived from the server config (rails + aggregates).
+    channels: List[ChannelInfo] = field(default_factory=list)
+    #: Resolved path of the ``server.yaml`` the catalog came from.
+    server_config: Path = DEFAULT_SERVER_CONFIG_PATH
 
-    def channel_map(self) -> Dict[int, ChannelConfig]:
+    def channel_map(self) -> Dict[int, ChannelInfo]:
         """Channel lookup by wire id (raises on duplicate ids)."""
-        mapping: Dict[int, ChannelConfig] = {}
+        mapping: Dict[int, ChannelInfo] = {}
         for channel in self.channels:
             if channel.id in mapping:
-                raise ValueError(f"duplicate client channel id {channel.id}")
+                raise ValueError(f"duplicate channel id {channel.id}")
             mapping[channel.id] = channel
         return mapping
 
 
-def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ClientConfig:
-    """Load ``path`` (YAML) and return a validated :class:`ClientConfig`."""
+def load_config(
+    path: Path = DEFAULT_CONFIG_PATH,
+    server_config_path: Optional[Path] = None,
+) -> ClientConfig:
+    """Load ``path`` (YAML) and return a validated :class:`ClientConfig`.
+
+    The channel catalog is read from the *server* config: ``server_config_path``
+    when given (CLI override), else the client YAML's ``server_config`` key
+    (resolved relative to ``path``), else the repo default ``config/server.yaml``.
+    """
+    path = Path(path)
     with path.open("r", encoding="utf-8") as fh:
         data: Dict[str, Any] = yaml.safe_load(fh) or {}
 
@@ -120,7 +125,23 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ClientConfig:
     connection = data.get("connection") or {}
     web = data.get("web") or {}
     display = data.get("display") or {}
-    channels = data.get("channels") or []
+
+    # Channel ids/names come from the server config (server.yaml): the binary
+    # wire carries ids only. A CLI override wins; otherwise client.yaml's
+    # ``server_config`` is used (relative paths resolve next to client.yaml).
+    if server_config_path is not None:
+        server_path = Path(server_config_path)
+    elif data.get("server_config"):
+        candidate = Path(str(data["server_config"]))
+        server_path = candidate if candidate.is_absolute() else path.parent / candidate
+    else:
+        server_path = DEFAULT_SERVER_CONFIG_PATH
+    if not server_path.is_file():
+        raise FileNotFoundError(
+            f"server config not found: {server_path} (set 'server_config' in "
+            f"{path} or pass --server-config)"
+        )
+    channels = load_catalog(server_path)
 
     return ClientConfig(
         connection=ConnectionConfig(
@@ -156,14 +177,6 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ClientConfig:
             ]
             or ["Wh", "kWh"],
         ),
-        channels=[
-            ChannelConfig(
-                id=_to_int(item.get("id"), idx + 1),
-                name=str(item.get("name", f"channel_{idx + 1}")),
-                label=str(item.get("label", "")),
-                kind=str(item.get("kind", "rail")),
-                aggregate=str(item.get("aggregate", "")),
-            )
-            for idx, item in enumerate(channels)
-        ],
+        channels=channels,
+        server_config=server_path,
     )

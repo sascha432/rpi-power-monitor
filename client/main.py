@@ -34,6 +34,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="path to client.yaml (default: config/client.yaml)",
     )
     parser.add_argument(
+        "--server-config",
+        help=(
+            "path to the server.yaml that defines the channel ids/names "
+            "(default: client.yaml 'server_config', else config/server.yaml)"
+        ),
+    )
+    parser.add_argument(
         "--host",
         help="override the dashboard bind host from config/web.host",
     )
@@ -60,13 +67,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     config_path = Path(args.config)
-    cfg: ClientConfig = load_config(config_path)
+    cfg: ClientConfig = load_config(
+        config_path, server_config_path=args.server_config
+    )
     if args.host:
         cfg.web.host = args.host
     if args.port is not None:
         cfg.web.port = args.port
     if not cfg.channels:
-        LOGGER.warning("no channels configured - add a channels table to %s", config_path)
+        LOGGER.warning(
+            "no channels found in %s - add a sensor.shunt table there",
+            cfg.server_config,
+        )
 
     store = DataStore(cfg)
     tcp = TcpClient(cfg.connection, store)
@@ -76,8 +88,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     url_host = "127.0.0.1" if bind_host in ("0.0.0.0", "::", "") else bind_host
     print(f"Power-monitor dashboard")
     print(f"  config    : {config_path}")
-    print(f"  Pi stream : {cfg.connection.host}:{cfg.connection.port} "
-          f"({len(cfg.channels)} channel(s) configured)")
+    print(f"  channels  : {cfg.server_config} ({len(cfg.channels)} channel(s))")
+    print(f"  Pi stream : {cfg.connection.host}:{cfg.connection.port}")
     print(f"  dashboard : http://{url_host}:{cfg.web.port}/")
     print("  Ctrl-C to stop")
 

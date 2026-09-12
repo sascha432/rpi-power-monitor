@@ -67,13 +67,17 @@ Every sample emits **rails first, then aggregates**, in a fixed order:
 
 For the shipped `config/server.yaml` this means:
 
-| channel_id | name        | kind      | fields                             |
-|-----------:|-------------|-----------|------------------------------------|
-| 1          | 12V Output  | rail      | voltage, current, power, energy    |
-| 2          | 12V Input   | rail      | voltage, current, power, energy    |
-| 3          | 5V Output   | rail      | voltage, current, power, energy    |
-| 100        | input       | aggregate | power, energy                      |
-| 101        | output      | aggregate | power, energy                      |
+| channel_id | name      | kind      | fields                             |
+|-----------:|-----------|-----------|------------------------------------|
+| 1          | 12V Input | rail      | voltage, current, power, energy    |
+| 2          | 12V NAS   | rail      | voltage, current, power, energy    |
+| 3          | 5V Output | rail      | voltage, current, power, energy    |
+| 100        | 12V Rail  | aggregate | power, energy                      |
+| 101        | 5V Rail   | aggregate | power, energy                      |
+
+The mapping is derived from `sensor.shunt[].name` / `.aggregate` by
+`shared/catalog.py`, which the server and the dashboard share so both always
+agree on which id means which channel.
 
 Rail frames publish `voltage_millivolt`, `current_milliamps`, `power_milliwatt`
 and their own two energy counters. Aggregate frames publish `power_milliwatt`
@@ -107,6 +111,11 @@ Every published channel carries its own pair of counters:
 - `state/energy.json` also holds a rolling **per-day** log (per channel, in
   the Pi's local time) that keeps the newest `energy.storage_days` days
   (`config/server.yaml`); the totals remain all-time accumulations.
+- With `energy.archive: true` (`config/server.yaml`) the server appends a copy
+  of the current `state/energy.json` to `state/energy.json.tar` once an hour, as
+  a member named `energy-YYYYmmddHHMMSS.json` (plain uncompressed tar, appended
+  in place; no retention policy). It is operator-facing only - never read back
+  by the server and never sent over the wire.
 - Rails integrate their own power (V*I); aggregates integrate the summed
   power of their member rails.
 - Both are int64 (signed): net energy may decrease when power flows backwards.

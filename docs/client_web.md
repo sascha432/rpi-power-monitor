@@ -29,6 +29,7 @@ overrides (everything else comes from `config/client.yaml`):
 ```bash
 python -m client --host 0.0.0.0 --port 9000   # override web bind address/port
 python -m client --config /path/to/client.yaml
+python -m client --server-config /path/to/server.yaml  # channel ids/names
 python -m client -v                            # DEBUG logs
 ```
 
@@ -60,32 +61,38 @@ connection:
 >     - 192.168.0.0/24
 > ```
 
-### 2.2 `channels` — must mirror `config/server.yaml`
+### 2.2 `server_config` — where channel ids/names come from
 
 The binary wire carries **only numeric channel ids, never names**, so the
-dashboard needs a local table that mirrors the server's channels:
+dashboard derives its channel table from the **server's own config**. Point
+`server_config` at the `server.yaml` the Pi runs (a relative path is resolved
+next to `client.yaml`):
+
+```yaml
+server_config: server.yaml     # default; config/server.yaml next to this file
+```
+
+The mapping is identical on both sides (`shared/catalog.py`):
 
 * **Rails** (INA3221 inputs): `id` = the chip channel number **1..3**,
   `name` = the corresponding `sensor.shunt[].name` in `server.yaml`.
-* **Aggregates**: `id` = **100 + index** over the *sorted* aggregate tags.
-  E.g. tags `{5v_rail, 12v_rail}` sort to `[12v_rail, 5v_rail]`, so
-  `12v_rail` → `100` and `5v_rail` → `101`; `name` = the tag itself.
+* **Aggregates**: `id` = **100 + index** over the *sorted* aggregate tags;
+  `name` = the tag itself (`sensor.shunt[].aggregate`).
 
-For the shipped configs:
+For the shipped `server.yaml` this yields:
 
-```yaml
-channels:
-  - {id: 1,   name: 12V Input,  kind: rail,      aggregate: 12v_rail}
-  - {id: 2,   name: 12V NAS,    kind: rail,      aggregate: 12v_rail}
-  - {id: 3,   name: 5V Input,   kind: rail,      aggregate: 5v_rail}
-  - {id: 100, name: 12v_rail,   label: "12V Rail", kind: aggregate}
-  - {id: 101, name: 5v_rail,    label: "5V Rail",  kind: aggregate}
-```
+| id  | name      | kind      |
+|----:|-----------|-----------|
+| 1   | 12V Input | rail      |
+| 2   | 12V NAS   | rail      |
+| 3   | 5V Output | rail      |
+| 100 | 12V Rail  | aggregate |
+| 101 | 5V Rail   | aggregate |
 
 `kind` decides what is shown: `rail` → voltage/current/power; `aggregate` →
-power only (the server sends V/I = 0 on aggregate frames). `label` is optional
-friendly text. **Keep this table in sync with `server.yaml`** whenever you
-rename shunts/tags or change the INA3221 wiring.
+power only (the server sends V/I = 0 on aggregate frames). Renaming a shunt or
+aggregate tag in `server.yaml` updates the dashboard automatically — there is
+nothing to keep in sync here.
 
 ### 2.3 `web` — where the dashboard listens
 
@@ -121,8 +128,9 @@ display:
 ## 3. What the browser does with settings (cookie)
 
 * On connect the dashboard sends a **`hello`** message with the *catalog*:
-  channels, metrics + units, energy-unit options, themes, cadence — built from
-  `client.yaml` above. The page builds itself from that catalog.
+  channels (from `server.yaml`), metrics + units, energy-unit options, themes,
+  cadence — built from the two config files. The page builds itself from that
+  catalog.
 * Your **UI choices are stored in a `pwm_settings` cookie** (metric, chart
   window, energy unit, theme, per-channel "plot" toggles). They are applied on
   every load and persist across sessions — no server round-trip.
@@ -153,7 +161,7 @@ before the first sample; a plain client can ignore the reserved-id frames.
 | Symptom | Cause / fix |
 |---|---|
 | Dashboard starts but shows **"connecting to Pi…"** | Pi unreachable (wrong `connection.host/port`) **or** the Pi's `server.allowed_clients` rejects you — see §2.1. |
-| Header shows **"Pi connected"** but cards stay `--` | Channel ids in `client.yaml` don't match the Pi's rails/aggregates (or the server isn't sending yet) — re-check §2.2. |
+| Header shows **"Pi connected"** but cards stay `--` | `server_config` points at a different `server.yaml` than the Pi runs (or the server isn't sending yet) — re-check §2.2. |
 | **Voltage/Current** metric shows only rails | Correct — aggregates don't publish V/I; only power. |
 | Chart looks empty right after a reload | It re-seeds from history over the next few seconds; the data window starts filling immediately. |
 | Browser page loads but WebSocket errors | Another process already bound `web.port`; check the startup banner URL and change `web.port`. |

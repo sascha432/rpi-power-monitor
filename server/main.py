@@ -34,7 +34,9 @@ from shared.binary import (
     pack_daily_header,
     pack_daily_value,
 )
+from shared.catalog import AGGREGATE_ID_BASE, aggregate_tags, build_catalog
 
+from .archive import EnergyArchive
 from .config import DEFAULT_CONFIG_PATH, ServerConfig, load_config
 from .energy import DEFAULT_STATE_FILE, EnergyStore
 from .mqtt import MqttPublisher, MqttTarget, slugify, unit_dimension
@@ -43,7 +45,6 @@ from .sensor.ina3221 import Ina3221
 
 LOGGER = logging.getLogger("server.main")
 
-AGGREGATE_ID_BASE = 100  # aggregate channel ids = 100 + index (rails keep 1..3)
 SAVE_EVERY_SECONDS = 30.0  # persist energy totals every 30 seconds
 
 
@@ -129,7 +130,6 @@ def _build_mqtt_publisher(
 def _make_daily_block(
     energy: EnergyStore,
     rails: list,
-    tags: List[str],
 ) -> bytes:
     """Build the one-shot 'daily energy' control block for a new TCP client.
 
@@ -149,8 +149,8 @@ def _make_daily_block(
     """
     n = min(energy.storage_days, DAILY_MAX)
     today, per_day, totals = energy.last_days(n)
-    ids: List[Tuple[str, int]] = [(item.name, item.channel) for item in rails] + [
-        (tag, AGGREGATE_ID_BASE + index) for index, tag in enumerate(tags)
+    ids: List[Tuple[str, int]] = [
+        (channel.name, channel.id) for channel in build_catalog(rails)
     ]
     block = bytearray(pack_daily_header(int(today.replace("-", "")), len(ids), n_days=n))
     last = len(per_day) - 1
@@ -179,7 +179,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not rails:
         LOGGER.error("No sensor.shunt channels configured in %s", DEFAULT_CONFIG_PATH)
         return 2
-    tags = sorted({item.aggregate for item in rails})
+    tags = aggregate_tags(rails)
 
     shunt_ohms = {item.channel: item.shunt_milliohm / 1000.0 for item in rails}
     sensor = Ina3221(
@@ -203,6 +203,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         state_file=DEFAULT_STATE_FILE,
         storage_days=cfg.energy.storage_days,
     )
+    # Optional archive: append a copy of the current state document to
+    # state/energy.json.tar once an hour (member energy-YYYYmmddHHMMSS.json).
+    archive: Optional[EnergyArchive] = (
+        EnergyArchive(energy.archive_file, energy.payload)
+        if cfg.energy.archive
+        else None
+    )
+    if archive is not None:
+        LOGGER.info(
+            "Hourly energy archive enabled -> %s (energy-YYYYmmddHHMMSS.json)",
+            archive.archive_file,
+        )
     session_mwh: Dict[str, float] = {}
     total_mwh: Dict[str, float] = {}
 
@@ -216,7 +228,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # connect (before any sample), so dashboards can draw a daily chart. The
     # same block is re-broadcast at each calendar-day rollover (see the sample
     # loop) so already-connected clients roll their chart forward at midnight.
-    tcp.set_connect_payload(lambda: _make_daily_block(energy, rails, tags))
+    tcp.set_connect_payload(lambda: _make_daily_block(energy, rails))
     tcp.start()
 
     interval_s = sensor.expected_interval_s()
@@ -301,7 +313,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     today_iso,
                 )
                 try:
-                    tcp.broadcast(_make_daily_block(energy, rails, tags))
+                    tcp.broadcast(_make_daily_block(energy, rails))
                 except Exception as exc:  # noqa: BLE001 - never kill sampling
                     LOGGER.warning("Could not re-broadcast daily block: %s", exc)
 
@@ -328,6 +340,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                 energy.save()
                 last_save_time = time.monotonic()
 
+            # Append the current state to the hourly tar archive (if enabled).
+            # Armed on the first pass, so the first member lands on the next
+            # whole hour; failures are swallowed so sampling never stops.
+            if archive is not None:
+                try:
+                    archive.maybe_write()
+                except Exception as exc:  # noqa: BLE001 - never kill sampling
+                    LOGGER.warning("Energy archive failed: %s", exc)
+
             # Pace to the sensor's fresh-value cadence.
             elapsed = time.monotonic() - cycle_start
             wait = interval_s - elapsed
@@ -344,6 +365,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         tcp.close()
         sensor.close()
         energy.save()
+        if archive is not None:
+            archive.close()  # finish the tar (end-of-archive marker)
         if mqtt_pub is not None:
             mqtt_pub.stop()
 

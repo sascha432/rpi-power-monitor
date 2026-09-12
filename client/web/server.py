@@ -4,7 +4,9 @@ Serves the offline HTML/JS UI (``client/web/static``) and exposes one
 WebSocket endpoint (``/ws``) that is the single pipe to the browser:
 
 * on connect the server sends ``hello`` (the UI catalog: channels, metrics,
-  units, theme options, energy unit, cadence - built from ``client.yaml``),
+  units, theme options, energy unit, cadence - the channels come from the
+  server's ``server.yaml`` via ``shared.catalog``, the rest from
+  ``client.yaml``),
 * then ``history`` (per-channel point arrays to seed the charts),
 * then a ``sample`` every ``display.update_ms`` with the latest readings and
   the Pi connection state.
@@ -29,7 +31,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from ..config import ClientConfig
+from ..config import ClientConfig, metrics_for
 from ..store import DataStore
 from .ws import (
     WebSocketConnection,
@@ -102,10 +104,10 @@ def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
             {
                 "id": channel.id,
                 "name": channel.name,
-                "label": channel.display_name,
+                "label": channel.name,
                 "kind": channel.kind,
                 "aggregate": channel.aggregate,
-                "metrics": channel.metrics,
+                "metrics": metrics_for(channel.kind),
             }
             for channel in cfg.channels
         ],

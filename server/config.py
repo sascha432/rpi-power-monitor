@@ -51,6 +51,9 @@ class EnergyConfig:
     #: Rolling per-day log depth kept in ``state/energy.json`` (all-time
     #: totals are always retained regardless of this window).
     storage_days: int = 90
+    #: Append an hourly snapshot of the state document to
+    #: ``state/energy.json.tar`` (member ``energy-YYYYmmddHHMMSS.json``).
+    archive: bool = False
 
 
 @dataclass
@@ -184,6 +187,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
         ),
         energy=EnergyConfig(
             storage_days=_to_int(energy_cfg.get("storage_days"), 90),
+            archive=_to_bool(energy_cfg.get("archive"), False),
         ),
         mqtt=MqttConfig(
             host=str(mqtt_host),  # "" when host is null (YAML `host: ~`) => disabled
