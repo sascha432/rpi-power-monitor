@@ -33,6 +33,14 @@ const METRIC_DEFAULT_COLORS = {
   energy: "#3b82f6", // blue
 };
 const CURRENT_UNITS = ["A", "mA"];
+// Browser-local UI defaults. The server's catalog only ships server-derived
+// facts, so these live here; a catalog value still wins when present, and each
+// visitor's choices are persisted in the pwm_settings cookie.
+const DEFAULT_METRIC = "power_w";
+const DEFAULT_THEME = "dark";
+const DEFAULT_ENERGY_UNIT = "kWh";
+const THEMES = ["dark", "light"];
+const ENERGY_UNITS = ["Wh", "kWh"];
 const ENERGY_DAYS_MIN = 7;
 const ENERGY_DAYS_MAX = 90;
 
@@ -149,11 +157,13 @@ function applyCatalogDefaults(cat) {
   document.title = cat.title;
   const appTitle = $("appTitle");
   if (appTitle) appTitle.textContent = cat.title;
-  const energyUnits = (cat.energy_units || ["kWh"]).slice();
+  const energyUnits = (cat.energy_units || ENERGY_UNITS).slice();
   const def = {
-    metric: cat.default_metric || "power_w",
-    theme: cat.theme || "dark",
-    energyUnit: energyUnits.includes("kWh") ? "kWh" : (energyUnits[0] || "kWh"),
+    metric: cat.default_metric || DEFAULT_METRIC,
+    theme: cat.theme || DEFAULT_THEME,
+    energyUnit: energyUnits.includes(DEFAULT_ENERGY_UNIT)
+      ? DEFAULT_ENERGY_UNIT
+      : (energyUnits[0] || DEFAULT_ENERGY_UNIT),
     currentUnit: "A",
     dashWindowSec: 60, // dashboard graph window: 1m default
     chanWindowSec: 300, // channel graph window: 5m default
@@ -167,8 +177,8 @@ function applyCatalogDefaults(cat) {
   // Merge metric colors with defaults (older cookies lack them), then clamp.
   S.settings.colors = Object.assign({}, METRIC_DEFAULT_COLORS, S.settings.colors || {});
   if (!(S.settings.metric in (cat.metrics || {}))) S.settings.metric = def.metric;
-  if (!(cat.themes || []).includes(S.settings.theme)) S.settings.theme = def.theme;
-  if (!(cat.energy_units || []).includes(S.settings.energyUnit)) S.settings.energyUnit = def.energyUnit;
+  if (!(cat.themes || THEMES).includes(S.settings.theme)) S.settings.theme = def.theme;
+  if (!(cat.energy_units || ENERGY_UNITS).includes(S.settings.energyUnit)) S.settings.energyUnit = def.energyUnit;
   if (!CURRENT_UNITS.includes(S.settings.currentUnit)) S.settings.currentUnit = def.currentUnit;
   S.settings.dashWindowSec = clampWindow(S.settings.dashWindowSec, def.dashWindowSec);
   S.settings.chanWindowSec = clampWindow(S.settings.chanWindowSec, def.chanWindowSec);
@@ -1330,7 +1340,7 @@ function buildSettings() {
   const host = $("settingsView");
   if (!host) return;
   const cat = S.catalog || {};
-  const themes = (cat.themes || ["dark", "light"]);
+  const themes = (cat.themes || THEMES);
   const metrics = cat.metrics || {};
   const metricOptions = Object.keys(metrics)
     .map((k) => `<option value="${k}">${(metrics[k] && metrics[k].label) || k}</option>`)
@@ -1402,7 +1412,7 @@ function buildSettings() {
     });
     s.value = val;
   };
-  fillOpts("setEnergy", (cat.energy_units || ["Wh", "kWh"]), S.settings.energyUnit);
+  fillOpts("setEnergy", (cat.energy_units || ENERGY_UNITS), S.settings.energyUnit);
   fillOpts("setCurrent", CURRENT_UNITS, S.settings.currentUnit);
 
   populateSettings();

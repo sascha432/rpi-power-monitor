@@ -37,7 +37,7 @@ from shared.binary import (
 from shared.catalog import AGGREGATE_ID_BASE, aggregate_tags, build_catalog
 
 from .archive import EnergyArchive
-from .config import DEFAULT_CONFIG_PATH, ServerConfig, load_config
+from .config import DEFAULT_CONFIG_PATH, REPO_ROOT, ServerConfig, load_config
 from .energy import DEFAULT_STATE_FILE, EnergyStore
 from .mqtt import MqttPublisher, MqttTarget, slugify, unit_dimension
 from .net.tcp_server import TcpServer
@@ -203,17 +203,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         state_file=DEFAULT_STATE_FILE,
         storage_days=cfg.energy.storage_days,
     )
-    # Optional archive: append a copy of the current state document to
-    # state/energy.json.tar once an hour (member energy-YYYYmmddHHMMSS.json).
+    # Optional archive: append a copy of the current state document to the
+    # configured tar once an hour (member energy-YYYYmmddHHMMSS.json). A "{...}"
+    # date token in energy.archive_filename rotates the file (e.g. monthly).
     archive: Optional[EnergyArchive] = (
-        EnergyArchive(energy.archive_file, energy.payload)
+        EnergyArchive(
+            cfg.energy.archive_filename,
+            energy.payload,
+            base_dir=REPO_ROOT,
+        )
         if cfg.energy.archive
         else None
     )
     if archive is not None:
         LOGGER.info(
-            "Hourly energy archive enabled -> %s (energy-YYYYmmddHHMMSS.json)",
-            archive.archive_file,
+            "Hourly energy archive enabled -> %s (members energy-YYYYmmddHHMMSS.json)",
+            archive.current_file,
         )
     session_mwh: Dict[str, float] = {}
     total_mwh: Dict[str, float] = {}

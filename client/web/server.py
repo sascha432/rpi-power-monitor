@@ -3,17 +3,16 @@
 Serves the offline HTML/JS UI (``client/web/static``) and exposes one
 WebSocket endpoint (``/ws``) that is the single pipe to the browser:
 
-* on connect the server sends ``hello`` (the UI catalog: channels, metrics,
-  units, theme options, energy unit, cadence - the channels come from the
-  server's ``server.yaml`` via ``shared.catalog``, the rest from
-  ``client.yaml``),
+* on connect the server sends ``hello`` (the UI catalog: tab title, channels,
+  metric metadata and cadence - the channels come from the server's
+  ``server.yaml`` via ``shared.catalog``, the rest from ``client.yaml``),
 * then ``history`` (per-channel point arrays to seed the charts),
 * then a ``sample`` every ``display.update_ms`` with the latest readings and
   the Pi connection state.
 
 The user's UI choices (metric, theme, energy unit, time window, hidden
-channels) are applied and stored by the browser in a cookie, so this server
-does not track per-client settings.
+channels) - and their defaults - are browser-side (``static/app.js`` + a
+cookie), so this server does not track per-client settings.
 
 Concurrency: every connection runs in its own thread (``ThreadingTCPServer``);
 a single broadcaster thread writes ``sample`` messages to all connected
@@ -88,16 +87,17 @@ def _compile_allowlist(entries: Optional[List[str]]) -> List[_Network]:
 
 
 def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
-    """UI catalog delivered in the ``hello`` message (and /api/catalog)."""
+    """UI catalog delivered in the ``hello`` message (and /api/catalog).
+
+    Only server-derived facts are shipped: the channels (from ``server.yaml``),
+    each metric's label/unit/kind, and the push cadence + history depth. The
+    purely visual defaults (selected metric/theme/energy unit and their
+    options) are browser-local constants in ``static/app.js``.
+    """
     display = cfg.display
     return {
         "title": display.title,
-        "default_metric": display.default_metric,
         "metrics": METRIC_META,
-        "energy_unit": display.energy_unit,
-        "energy_units": display.energy_units,
-        "theme": display.theme,
-        "themes": display.theme_options,
         "update_ms": display.update_ms,
         "history_points": display.history_points,
         "channels": [

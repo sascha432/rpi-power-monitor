@@ -25,8 +25,9 @@ used ~0). Legacy v1 files (a flat ``{channel: mWh}`` total map) migrate to v2
 automatically on the first save.
 
 With ``energy.archive: true`` an hourly snapshot of this document is also
-appended to ``state/energy.json.tar`` (see ``server.archive``); that file is
-never read back by the server - it is an operator-facing history log.
+appended to a tar archive (``energy.archive_filename``, see
+``server.archive``); that file is only ever written - the server never reads it
+back - so it is purely an operator-facing history log.
 """
 from __future__ import annotations
 
@@ -202,11 +203,6 @@ class EnergyStore:
                     for day, bucket in sorted(self._days.items())
                 },
             }
-
-    @property
-    def archive_file(self) -> Path:
-        """``state/energy.json.tar`` - hourly tar snapshots of the state file."""
-        return self._state_file.with_suffix(self._state_file.suffix + ".tar")
 
     def save(self) -> None:
         """Persist the all-time totals + the rolling per-day log."""

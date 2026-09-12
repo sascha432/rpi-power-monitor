@@ -112,10 +112,16 @@ Every published channel carries its own pair of counters:
   the Pi's local time) that keeps the newest `energy.storage_days` days
   (`config/server.yaml`); the totals remain all-time accumulations.
 - With `energy.archive: true` (`config/server.yaml`) the server appends a copy
-  of the current `state/energy.json` to `state/energy.json.tar` once an hour, as
-  a member named `energy-YYYYmmddHHMMSS.json` (plain uncompressed tar, appended
-  in place; no retention policy). It is operator-facing only - never read back
-  by the server and never sent over the wire.
+  of the current `state/energy.json` to the tar named by
+  `energy.archive_filename` once an hour, as a member named
+  `energy-YYYYmmddHHMMSS.json` (plain uncompressed tar, appended in place; a
+  relative filename resolves against the repository root). `{...}` date tokens
+  in that name rotate the file - the shipped config uses
+  `state/energy-{YYYYmm}.json.tar`, i.e. a new monthly archive, and supports
+  `YYYY YY MMM MM DD HH NN SS` (case-insensitive; `MM`/`mm` = month,
+  `NN` = minute). There is no
+  retention policy. It is operator-facing only - never read back by the server
+  and never sent over the wire.
 - Rails integrate their own power (V*I); aggregates integrate the summed
   power of their member rails.
 - Both are int64 (signed): net energy may decrease when power flows backwards.

@@ -111,26 +111,29 @@ Open `http://<host>:8080/`. The chart library (uPlot) is vendored under
 CIDR semantics as the Pi server's `server.allowed_clients`; empty = localhost
 only, and a bare IP like `192.168.0.5` means just that host).
 
-### 2.4 `display` — defaults sent to the browser
+### 2.4 `display` — dashboard server settings
 
 ```yaml
 display:
-  title: Power Monitor
-  default_metric: power_w     # power_w | voltage_v | current_a
+  title: Power Monitor        # browser tab title
   update_ms: 500              # live-update cadence pushed over the WebSocket
   history_points: 3600        # rolling samples kept (~10 min @ 7 Hz)
-  energy_unit: kWh            # Wh | kWh  (display only)
-  theme: dark                 # initial theme
-  theme_options: [dark, light]
-  energy_units: [Wh, kWh]
 ```
+
+The *visual* defaults — preselected metric, theme and energy unit, plus which
+options the Settings view offers — are **browser-local constants** in
+`client/web/static/app.js` (`DEFAULT_METRIC`, `DEFAULT_THEME`,
+`DEFAULT_ENERGY_UNIT`, `THEMES`, `ENERGY_UNITS`), so there is nothing to
+configure for them server-side; each visitor's choices live in the
+`pwm_settings` cookie.
 
 ## 3. What the browser does with settings (cookie)
 
 * On connect the dashboard sends a **`hello`** message with the *catalog*:
-  channels (from `server.yaml`), metrics + units, energy-unit options, themes,
-  cadence — built from the two config files. The page builds itself from that
-  catalog.
+  channels (from `server.yaml`), metric metadata (label, unit, which channel
+  kinds publish it), the tab title and the push cadence / history depth — built
+  from the two config files. The page builds itself from that catalog, while
+  the purely visual defaults come from its own constants in `app.js`.
 * Your **UI choices are stored in a `pwm_settings` cookie** (metric, chart
   window, energy unit, theme, per-channel "plot" toggles). They are applied on
   every load and persist across sessions — no server round-trip.

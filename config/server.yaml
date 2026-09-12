@@ -33,17 +33,14 @@ sensor:
   shunt:
     - channel: 1
       name: 12V Input
-      voltage: 12.0
       shunt_milliohm: 25.0
       aggregate: 12V Rail     # aggregate channel for 12V rail (5v buck converter and 12v pi input)
     - channel: 2
       name: 12V NAS
-      voltage: 12.0
       shunt_milliohm: -25.0   # negative shunt value to reverse current direction
       aggregate: 12V Rail     # aggregate channel for 12V rail (12v NAS output)
     - channel: 3
       name: 5V Output
-      voltage: 5.0
       shunt_milliohm: 25.0
       aggregate: 5V Rail      # aggregate channel for 5V rail (buck converter on channel 1)
 
@@ -61,8 +58,15 @@ sampling:
 energy:
   storage_days: 90        # rolling per-day log: days of daily energy kept in state/energy.json
                           # (the dashboard can display 7-90 days of daily energy)
-  archive: true           # hourly snapshot of state/energy.json appended to
-                          # state/energy.json.tar as energy-YYYYmmddHHMMSS.json
+  archive: true           # append an hourly snapshot of state/energy.json to the tar named
+                          # by archive_filename, as member energy-YYYYmmddHHMMSS.json
+  archive_filename: state/energy-{YYYYmm}.json.tar
+                          # relative to the repo root (or absolute). {..} date tokens rotate
+                          # the file: {YYYYmm} = one tar per month, so a year ends up as 12
+                          # archives of hourly snapshots instead of one endless file.
+                          # tokens (case-insensitive): YYYY YY MMM MM DD HH NN SS, where
+                          # MM/mm = month and NN = minute; no tokens = a single growing tar.
+                          # No auto-retention either way.
 
 # ---------------------------------------------------------------------------
 # MQTT settings

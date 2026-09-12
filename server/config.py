@@ -13,6 +13,11 @@ import yaml
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "server.yaml"
 
+#: Repository root - relative paths in ``config/server.yaml`` (in practice the
+#: energy archive filename) resolve against it, because the server is started
+#: from there (see ``deploy/rpi-power-monitor.service`` and the README).
+REPO_ROOT = DEFAULT_CONFIG_PATH.parents[1]
+
 
 @dataclass
 class I2cConfig:
@@ -24,7 +29,6 @@ class I2cConfig:
 class ShuntChannel:
     channel: int  # INA3221 input number, 1..3
     name: str
-    voltage: float  # nominal rail voltage (V), e.g. 12.0 or 5.0
     shunt_milliohm: float
     aggregate: str = "output"  # rail grouping: "input" or "output"
 
@@ -51,9 +55,15 @@ class EnergyConfig:
     #: Rolling per-day log depth kept in ``state/energy.json`` (all-time
     #: totals are always retained regardless of this window).
     storage_days: int = 90
-    #: Append an hourly snapshot of the state document to
-    #: ``state/energy.json.tar`` (member ``energy-YYYYmmddHHMMSS.json``).
+    #: Append an hourly snapshot of the state document to a tar archive
+    #: (member ``energy-YYYYmmddHHMMSS.json``). ``False`` disables archiving.
     archive: bool = False
+    #: Archive file, relative to the repository root (or absolute). It may carry
+    #: ``{...}`` date tokens - ``state/energy-{YYYYmm}.json.tar`` rolls over to a
+    #: new file each month; without tokens it is one continuously growing tar.
+    #: Tokens (case-insensitive): YYYY YY MMM MM DD HH NN SS, where MM/mm is the
+    #: month and NN the minute (see ``server.archive``).
+    archive_filename: str = "state/energy.json.tar"
 
 
 @dataclass
@@ -139,6 +149,9 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
     mqtt = data.get("mqtt") or {}
     i2c = sensor.get("i2c") or {}
 
+    # An omitted/null/blank archive filename means the default single tar.
+    archive_filename = str(energy_cfg.get("archive_filename") or "").strip()
+
     # A YAML null (`host: ~`) must map to an empty host (disables MQTT), not
     # the string "None" - which would be truthy and accidentally enable it.
     mqtt_host = mqtt.get("host", "localhost")  # absent => default "localhost"
@@ -173,7 +186,6 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
                 ShuntChannel(
                     channel=_to_int(item.get("channel"), idx + 1),
                     name=str(item.get("name", f"ch{idx + 1}")),
-                    voltage=_to_float(item.get("voltage"), 0.0),
                     shunt_milliohm=_to_float(item.get("shunt_milliohm"), 0.0),
                     aggregate=str(item.get("aggregate", "output")),
                 )
@@ -188,6 +200,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> ServerConfig:
         energy=EnergyConfig(
             storage_days=_to_int(energy_cfg.get("storage_days"), 90),
             archive=_to_bool(energy_cfg.get("archive"), False),
+            archive_filename=archive_filename or EnergyConfig.archive_filename,
         ),
         mqtt=MqttConfig(
             host=str(mqtt_host),  # "" when host is null (YAML `host: ~`) => disabled

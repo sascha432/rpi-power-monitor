@@ -19,7 +19,8 @@
 #     the Pi's server.yaml `server.allowed_clients` includes that machine's
 #     subnet (or 0.0.0.0/0), otherwise the Pi rejects the TCP connection.
 #  4. UI settings (metric, theme, energy unit, time window, hidden channels)
-#     are stored by the browser in a cookie - nothing to configure here.
+#     are browser-local: the defaults live in client/web/static/app.js and each
+#     visitor's choices are kept in the pwm_settings cookie - nothing here.
 # ============================================================================
 
 # ---------------------------------------------------------------------------
@@ -52,15 +53,16 @@ web:
    - 192.168.0.0/24
 
 # ---------------------------------------------------------------------------
-# Display defaults / UI catalog. These are sent to the browser on connect and
-# used as defaults; the user's choices are persisted in a cookie.
+# Display / dashboard server. The catalog sent to the browser carries only what
+# the server derives: the tab title, the channels + metric metadata (from
+# server.yaml) and the push cadence / history depth.
+#
+# Purely visual defaults - preselected metric, theme, energy unit, and which
+# options the Settings view offers - are browser-local: see the constants at
+# the top of client/web/static/app.js. Each visitor's choices are stored in the
+# pwm_settings cookie.
 # ---------------------------------------------------------------------------
 display:
-  title: "Power Monitor"
-  default_metric: power_w   # power_w | voltage_v | current_a
+  title: "Power Monitor"    # browser tab title
   update_ms: 133            # WebSocket sample-push cadence (ms)
   history_points: 3600      # rolling samples kept per channel (~10 min @ 7 Hz)
-  energy_unit: kWh          # Wh | kWh  (display only; server always sends Wh)
-  theme: dark               # default UI theme
-  theme_options: [dark, light]
-  energy_units: [Wh, kWh]

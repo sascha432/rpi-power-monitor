@@ -44,7 +44,7 @@ rpi-power-monitor/
 │   ├── main.py              #   entry point (read + broadcast + MQTT)
 │   ├── config.py            #   typed loader for config/server.yaml
 │   ├── energy.py            #   per-channel Wh counters (+JSON persistence)
-│   ├── archive.py           #   hourly state snapshots -> energy.json.tar
+│   ├── archive.py           #   hourly state snapshots -> energy*.json.tar
 │   ├── mqtt.py              #   optional MQTT publisher
 │   ├── sensor/
 │   │   ├── base.py          #   PowerSensor interface
@@ -65,7 +65,7 @@ rpi-power-monitor/
 ├── docs/
 │   ├── protocol.md          # TCP wire protocol specification (binary)
 │   └── client_web.md        # web dashboard: how to run & configure
-└── state/                   # energy.json + energy.json.tar archive (gitignored)
+└── state/                   # energy.json + hourly archive tars (gitignored)
 ```
 
 ## Quick start
@@ -135,8 +135,8 @@ Useful systemd facts for the units:
 ## Configuration
 
 - `config/server.yaml` — bind address/port, client allowlist, I2C bus +
-  address, physical shunts (name / nominal voltage / shunt / aggregate tag),
-  sampling, MQTT (optional).
+  address, physical shunts (name / shunt / aggregate tag), sampling, MQTT
+  (optional).
 - `config/client.yaml` — Pi address, dashboard bind host/port, display defaults,
   and `server_config` (the `server.yaml` the dashboard reads its channel
   ids/names from — the binary wire carries ids only, never names).

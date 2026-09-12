@@ -8,8 +8,9 @@ The client is a **stdlib web dashboard**:
 * it connects to the Pi's raw TCP binary stream (``shared.binary`` frames),
 * keeps a rolling in-memory history per channel, and
 * serves an HTML/JS page over HTTP + WebSocket. The WebSocket delivers the UI
-  "catalog" (available channels / metrics / units / theme / cadence) plus
-  history and live samples; the browser stores the user's UI choices in a
+  "catalog" (channels / metric metadata / tab title / cadence) plus history and
+  live samples. The purely visual defaults live in the browser
+  (``client/web/static/app.js``) and each visitor's UI choices are stored in a
   cookie.
 
 The **channel set is not configured here**: the binary wire carries ids only,
@@ -65,14 +66,13 @@ class WebConfig:
 
 @dataclass
 class DisplayConfig:
-    title: str = "Power Monitor"
-    default_metric: str = "power_w"   # metric selected on first visit
-    update_ms: int = 500              # WebSocket sample-push cadence
-    history_points: int = 3600        # per-channel rolling sample count kept
-    energy_unit: str = "kWh"          # Wh | kWh (display only; server sends Wh)
-    theme: str = "dark"               # default UI theme ("dark" | "light")
-    theme_options: List[str] = field(default_factory=lambda: ["dark", "light"])
-    energy_units: List[str] = field(default_factory=lambda: ["Wh", "kWh"])
+    title: str = "Power Monitor"     # browser tab title
+    update_ms: int = 500             # WebSocket sample-push cadence
+    history_points: int = 3600       # per-channel rolling sample count kept
+    # NOTE: the visual UI defaults (metric, theme, energy unit, ...) are NOT
+    # configured here - they are browser-local constants in
+    # client/web/static/app.js, persisted per visitor in the pwm_settings
+    # cookie.
 
 
 @dataclass
@@ -163,19 +163,8 @@ def load_config(
         ),
         display=DisplayConfig(
             title=str(display.get("title", "Power Monitor")),
-            default_metric=str(display.get("default_metric", "power_w")),
             update_ms=_to_int(display.get("update_ms"), 500),
             history_points=_to_int(display.get("history_points"), 3600),
-            energy_unit=str(display.get("energy_unit", "kWh")),
-            theme=str(display.get("theme", "dark")),
-            theme_options=[
-                str(item) for item in (display.get("theme_options") or ["dark", "light"])
-            ]
-            or ["dark", "light"],
-            energy_units=[
-                str(item) for item in (display.get("energy_units") or ["Wh", "kWh"])
-            ]
-            or ["Wh", "kWh"],
         ),
         channels=channels,
         server_config=server_path,
