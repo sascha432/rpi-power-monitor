@@ -57,7 +57,6 @@ const DASH_METRICS = [
 const S = {
   catalog: null,
   ws: null,
-  piConnected: false,
   lastSample: 0,
   timeline: [], // shared x axis (epoch s), one entry per sample tick
   channels: [], // ordered channel list from the catalog (derived from server.yaml)
@@ -77,7 +76,6 @@ const S = {
   },
   sig: "",      // chart signature (rebuild when it changes)
   dashU: {},    // dashboard graphs: metricKey -> uPlot (4 panels)
-  u: null,      // (legacy single dashboard chart - unused)
   table: null,  // channel focus (single selected channel): { cells, charts, activeId }
   view: { name: "dashboard", id: null }, // active sidebar view
   _piWas: false,
@@ -155,8 +153,6 @@ function chartLineColors() {
 function applyCatalogDefaults(cat) {
   S.catalog = cat;
   document.title = cat.title;
-  const appTitle = $("appTitle");
-  if (appTitle) appTitle.textContent = cat.title;
   const energyUnits = (cat.energy_units || ENERGY_UNITS).slice();
   const def = {
     metric: cat.default_metric || DEFAULT_METRIC,
@@ -265,8 +261,8 @@ function createCards() {
       kind: ch.kind,
       metrics: ch.metrics || [],
       color,
-      v: [], a: [], w: [], e: [],
-      last: { v: null, a: null, w: null, s: 0, t: 0 },
+      v: [], a: [], w: [],
+      last: { v: null, a: null, w: null, t: 0 },
       daily: null, // last-7-days Wh bars: { prev:[6], base, anchor, today }
     };
 
@@ -394,7 +390,7 @@ function buildNav() {
     const short = String(ch.label || ch.name).replace(/\s*\(total\)\s*$/i, "");
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "nav-item nav-channel";
+    b.className = "nav-item";
     b.dataset.view = "channel";
     b.dataset.channel = ch.id;
     b.title = "Show " + (ch.label || ch.name);
@@ -454,10 +450,8 @@ function teardownTable() {
   if (host) host.innerHTML = "";
 }
 
-// Metric buffers live on the S.meta[id] entry: v/a/w arrays, plus `e` for the
-// cumulative total-Wh series (used by the read-only Energy tile).
+// Metric buffers live on the S.meta[id] entry as v/a/w arrays.
 function bufferForMetric(meta, metricKey) {
-  if (metricKey === "energy") return meta.e || [];
   return meta[ARR[metricKey] || "w"] || [];
 }
 
@@ -578,8 +572,8 @@ function makeFocusPlot(box, meta, metricKey, big) {
       stroke: color,
       width: big ? 1.8 : 1.3,
       points: { show: false },
-      fill: (!big && metricKey !== "energy") ? color + "22" : undefined,
-      value: (u, v) => fmtLegend(metricKey, v),
+      fill: !big ? color + "22" : undefined,
+      value: (_u, v) => fmtLegend(metricKey, v),
     },
   ];
 
@@ -628,7 +622,6 @@ function selectTileMetric(key) {
 
 function destroyChart() {
   destroyDash(); // dashboard's four graphs
-  if (S.u) { try { S.u.destroy(); } catch (_e) {} S.u = null; }
   S.sig = "";
 }
 
@@ -680,17 +673,12 @@ function connect() {
     return;
   }
   S.ws = ws;
-  ws.onopen = () => updatePill();
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (_e) { return; }
     handle(msg);
   };
-  ws.onclose = () => {
-    S.piConnected = false;
-    updatePill();
-    scheduleReconnect();
-  };
+  ws.onclose = () => scheduleReconnect();
   ws.onerror = () => { try { ws.close(); } catch (_e) {} };
 }
 let reconnectTimer = null;
@@ -718,9 +706,6 @@ function onHello(msg) {
   populateSettings();
   S.view = { name: "dashboard", id: null };
   setView("dashboard"); // build the sidebar and show the default dashboard view
-  // reflect the Pi connection state carried by hello
-  S.piConnected = !!(msg.state && msg.state.connected);
-  updatePill();
 }
 
 // ---- daily energy (N-day history on the focused channel) --------------------
@@ -856,8 +841,8 @@ function resetBuffers() {
   S.timeline = [];
   Object.keys(S.meta).forEach((k) => {
     const m = S.meta[k];
-    m.v = []; m.a = []; m.w = []; m.e = [];
-    m.last = { v: null, a: null, w: null, s: 0, t: 0 };
+    m.v = []; m.a = []; m.w = [];
+    m.last = { v: null, a: null, w: null, t: 0 };
   });
 }
 
@@ -873,33 +858,22 @@ function onSample(msg) {
     S.sig = "";
   }
   S._piWas = pi;
-  S.piConnected = pi;
   S.lastSample = msg.ts || Date.now() / 1000;
 
   S.channels.forEach((ch) => {
     const m = S.meta[ch.id];
     const row = rows[String(ch.id)];
     if (row) {
-      m.last.v = row[1]; m.last.a = row[2]; m.last.w = row[3];
-      m.last.s = row[4]; m.last.t = row[5];
+      m.last.v = row[1]; m.last.a = row[2]; m.last.w = row[3]; m.last.t = row[4];
       renderCard(ch.id);
     }
     // Hold-last-value so every series stays aligned with the shared timeline.
     m.v.push(m.last.v); m.a.push(m.last.a); m.w.push(m.last.w);
-    m.e.push(m.last.t);
   });
   S.timeline.push(S.lastSample);
   trim();
 
-  const ageEl = $("ageText");
-  if (ageEl) ageEl.textContent = "age " + ageText() + "s";
-  updatePill();
   renderChart();
-}
-
-function ageText() {
-  const age = S.lastSample ? Date.now() / 1000 - S.lastSample : -1;
-  return age < 0 ? "--" : age.toFixed(1);
 }
 
 function trim() {
@@ -916,27 +890,10 @@ function trim() {
     if (m.v.length > cap) m.v.splice(0, m.v.length - cap);
     if (m.a.length > cap) m.a.splice(0, m.a.length - cap);
     if (m.w.length > cap) m.w.splice(0, m.w.length - cap);
-    if (m.e.length > cap) m.e.splice(0, m.e.length - cap);
   });
 }
 
 // ---- chart -----------------------------------------------------------------------
-function updatePill() {
-  const pill = $("connPill");
-  if (!pill) return; // connection pill removed from the header
-  const wsOpen = S.ws && S.ws.readyState === WebSocket.OPEN;
-  if (!wsOpen) {
-    pill.textContent = "dashboard offline";
-    pill.className = "bad";
-  } else if (S.piConnected) {
-    pill.textContent = "Pi connected · " + ageText() + "s";
-    pill.className = "ok";
-  } else {
-    pill.textContent = "connecting to Pi…";
-    pill.className = "bad";
-  }
-}
-
 function chartActive() {
   return S.view.name === "dashboard" || S.view.name === "channel";
 }
@@ -1140,7 +1097,7 @@ function makeDashPlot(m, panel) {
       stroke: pal[channelIndexFor(ch) % pal.length],
       width: 1.6,
       points: { show: false },
-      value: (u, v) => fmtLegend(m.key, v),
+      value: (_u, v) => fmtLegend(m.key, v),
     });
   });
   return new uPlot({

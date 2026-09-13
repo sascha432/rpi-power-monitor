@@ -25,7 +25,7 @@ logging:
 # Sensor (INA3221)
 # ---------------------------------------------------------------------------
 sensor:
-  type: ina3221             # driver to load (only "ina3221" exists today)
+  type: ina3221             # MQTT discovery metadata; the driver is always INA3221
   i2c:
     bus: 1                  # /dev/i2c-1 on a Raspberry Pi
     address: "0x40"         # selected by the A0/A1 strap pins (0x40 .. 0x43)

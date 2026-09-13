@@ -159,7 +159,6 @@ class TcpClient:
                 voltage_v=voltage_mv / 1000.0,
                 current_a=current_ma / 1000.0,
                 power_w=power_mw / 1000.0,
-                session_wh=session_mwh / 1000.0,
                 total_wh=total_mwh / 1000.0,
             )
 

@@ -135,19 +135,21 @@ configure for them server-side; each visitor's choices live in the
 ## 3. What the browser does with settings (cookie)
 
 * On connect the dashboard sends a **`hello`** message with the *catalog*:
-  channels (from `server.yaml`), metric metadata (label, unit, which channel
-  kinds publish it), the tab title and the push cadence / browser buffer depth
-  — built from the two config files. The page builds itself from that catalog,
-  while the purely visual defaults come from its own constants in `app.js`.
-* Your **UI choices are stored in a `pwm_settings` cookie** (metric, chart
-  window, energy unit, theme, per-channel "plot" toggles). They are applied on
-  every load and persist across sessions — no server round-trip.
+  channels (from `server.yaml`), metric metadata (label and unit), the tab
+  title and the browser's chart-buffer depth — built from the two config files.
+  The page builds itself from that catalog, while the purely visual defaults
+  come from its own constants in `app.js`.
+* Your **UI choices are stored in a `pwm_settings` cookie** (metric, energy and
+  current units, dashboard/channel chart windows, energy-bar day count, theme,
+  metric colours, per-channel "plot" toggles and per-channel metric memory).
+  They are applied on every load and persist across sessions — no server
+  round-trip.
 * The **Reset** button clears the cookie and reloads with the defaults.
 * A **`daily`** message carries the Pi's one-shot **daily-energy** block (the
   reserved control frames described in `docs/protocol.md`). In the single-
-  channel view an **Energy history** panel plots the last N days (Settings,
-  7-90 days, default 7); the "today" bar keeps growing live from the
-  cumulative total already present in every `sample` message.
+  channel view the read-only **Energy** tile hosts a bar strip for the last N
+  days (Settings, 7-90 days, default 7); the "today" bar keeps growing live from
+  the cumulative total already present in every `sample` message.
 * There is **no sample-history message**: the Python client keeps only the
   latest reading per channel, and the browser accumulates its own chart buffers
   from the `sample` stream. A freshly opened or reloaded chart therefore starts
@@ -175,7 +177,7 @@ before the first sample; a plain client can ignore the reserved-id frames.
 | Dashboard starts but shows **"connecting to Pi…"** | Pi unreachable (wrong `connection.host/port`) **or** the Pi's `server.allowed_clients` rejects you — see §2.1. |
 | Header shows **"Pi connected"** but cards stay `--` | `server_config` points at a different `server.yaml` than the Pi runs (or the server isn't sending yet) — re-check §2.2. |
 | **Voltage/Current** metric shows only rails | Correct — aggregates don't publish V/I; only power. |
-| Chart looks empty right after a load/reload | Expected — the client sends no sample history, so the browser builds the chart from live samples; it fills over the selected window (Settings → Window). |
+| Chart looks empty right after a load/reload | Expected — the client sends no sample history, so the browser builds the chart from live samples; it fills over the selected window (Settings → Dashboard window / Channel window). |
 | Browser page loads but WebSocket errors | Another process already bound `web.port`; check the startup banner URL and change `web.port`. |
 | Energy totals look "too big/small" | Totals are Wh from the server; switch `Energy` to `Wh`/`kWh` (display-only conversion). |
 

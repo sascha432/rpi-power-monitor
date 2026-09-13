@@ -41,8 +41,7 @@ class ChannelInfo:
 
     id: int
     name: str
-    kind: str            # "rail" | "aggregate"
-    aggregate: str = ""  # rails: the aggregate tag this rail feeds
+    kind: str  # "rail" | "aggregate"
 
 
 def _value(item: Any, key: str) -> Optional[Any]:
@@ -82,12 +81,7 @@ def build_catalog(shunts: Iterable[Any]) -> List[ChannelInfo]:
     """Rails (ascending chip channel) followed by aggregates (ascending tag)."""
     rails = sorted(_normalise(shunts), key=lambda entry: entry["channel"])
     catalog: List[ChannelInfo] = [
-        ChannelInfo(
-            id=entry["channel"],
-            name=entry["name"],
-            kind="rail",
-            aggregate=entry["aggregate"],
-        )
+        ChannelInfo(id=entry["channel"], name=entry["name"], kind="rail")
         for entry in rails
     ]
     for index, tag in enumerate(aggregate_tags(rails)):

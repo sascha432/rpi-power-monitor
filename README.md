@@ -10,7 +10,7 @@ on a Raspberry Pi and shows the data on a **web dashboard** in your browser:
 - **`client/`** — a **stdlib-only Python web server**. Connects to
   the Pi's raw TCP stream, keeps the latest reading per channel, and serves an
   offline HTML/JS dashboard over HTTP + **WebSocket**. The WebSocket hands the
-  browser its config/settings catalog (channels, metrics, units, theme), the
+  browser its catalog (channels, metric labels/units, chart-buffer depth), the
   Pi's daily energy totals plus live readings; the rolling chart buffers and
   the user's UI choices are browser-side (the latter in a cookie).
 
@@ -38,9 +38,7 @@ rpi-power-monitor/
 │   └── install-service.sh
 ├── shared/                  # code shared by both sides (contract only)
 │   ├── binary.py            #   40-byte binary frame pack/unpack
-│   ├── catalog.py           #   channel ids/names (from config/server.yaml)
-│   ├── models.py            #   legacy JSON-Lines data model (unused)
-│   └── protocol.py          #   legacy JSON-Lines framing (unused)
+│   └── catalog.py           #   channel ids/names (from config/server.yaml)
 ├── server/                  # Raspberry Pi side
 │   ├── main.py              #   entry point (read + broadcast + MQTT)
 │   ├── config.py            #   typed loader for config/server.yaml
@@ -50,7 +48,6 @@ rpi-power-monitor/
 │   ├── sensor/
 │   │   ├── base.py          #   PowerSensor interface
 │   │   └── ina3221.py       #   INA3221 driver (smbus2)
-│   ├── channels/            #   (legacy virtual-channel stubs)
 │   └── net/
 │       └── tcp_server.py    #   threaded raw-TCP broadcaster (+allowlist)
 ├── client/                  # web-dashboard side (Windows / Linux / Pi)

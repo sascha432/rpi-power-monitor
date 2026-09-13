@@ -30,12 +30,12 @@ class ShuntChannel:
     channel: int  # INA3221 input number, 1..3
     name: str
     shunt_milliohm: float
-    aggregate: str = "output"  # rail grouping: "input" or "output"
+    aggregate: str = "output"  # free-form aggregate tag this rail feeds
 
 
 @dataclass
 class SensorConfig:
-    type: str = "ina3221"
+    type: str = "ina3221"  # discovery metadata only; the driver is Ina3221
     i2c: I2cConfig = field(default_factory=I2cConfig)
     shunt: List[ShuntChannel] = field(default_factory=list)
 

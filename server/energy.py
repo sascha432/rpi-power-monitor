@@ -139,14 +139,6 @@ class EnergyStore:
             self._days[today][channel] = self._days[today].get(channel, 0.0) + delta_mwh
             return session, total
 
-    def snapshot(self) -> Dict[str, Dict[str, float]]:
-        """Return {channel: {"session_mwh": .., "total_mwh": ..}}."""
-        with self._lock:
-            return {
-                name: {"session_mwh": self._session[name], "total_mwh": self._total[name]}
-                for name in sorted(self._total)
-            }
-
     def last_days(self, n: int = 7) -> Tuple[str, list, Dict[str, float]]:
         """Return ``(today, per_day, totals)`` for the trailing ``n`` days.
 
@@ -271,8 +263,6 @@ class EnergyStore:
 
     def _prune(self, today: str) -> None:
         """Drop daily buckets older than the ``storage_days`` retention window."""
-        if self._storage_days <= 0:
-            return
         try:
             cutoff = (
                 date.fromisoformat(today) - timedelta(days=self._storage_days - 1)

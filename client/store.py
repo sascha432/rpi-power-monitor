@@ -13,7 +13,6 @@ from the Pi and are still stored here - see ``apply_daily``.)
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -22,7 +21,7 @@ from shared.catalog import ChannelInfo
 from .config import ClientConfig
 
 # Canonical value order used on the wire to the browser (sample messages):
-# (t, voltage_v, current_a, power_w, session_wh, total_wh)
+# (t, voltage_v, current_a, power_w, total_wh)
 
 
 @dataclass
@@ -33,7 +32,6 @@ class Reading:
     voltage_v: float = 0.0
     current_a: float = 0.0
     power_w: float = 0.0
-    session_wh: float = 0.0
     total_wh: float = 0.0
 
 
@@ -45,9 +43,6 @@ class DataStore:
         self._lock = threading.Lock()
         self._latest: Dict[int, Reading] = {}
         self._connected = False
-        self._connected_at: Optional[float] = None
-        self._last_receive: Optional[float] = None
-        self._last_frame_at: Optional[float] = None
         # One-shot per-day energy block pushed by the server on connect:
         # str(cid) -> {"vals": [..n Wh oldest->today], "anchor": all-time Wh}.
         self._daily = None
@@ -56,19 +51,12 @@ class DataStore:
 
     # -- status --------------------------------------------------------------
 
-    @property
-    def connected(self) -> bool:
-        with self._lock:
-            return self._connected
-
     def set_connected(self, connected: bool) -> None:
         """Called by the TCP reader thread on (dis)connect."""
-        now = time.time()
         with self._lock:
             if connected == self._connected:
                 return
             self._connected = connected
-            self._connected_at = now if connected else None
             # A fresh connection means a fresh server run: drop the previous
             # run's snapshots so nothing stale is shown until new frames arrive.
             if connected:
@@ -88,7 +76,6 @@ class DataStore:
         voltage_v: float = 0.0,
         current_a: float = 0.0,
         power_w: float = 0.0,
-        session_wh: float = 0.0,
         total_wh: float = 0.0,
     ) -> None:
         """Store one decoded frame (unknown channel ids are ignored)."""
@@ -99,19 +86,12 @@ class DataStore:
             voltage_v=voltage_v,
             current_a=current_a,
             power_w=power_w,
-            session_wh=session_wh,
             total_wh=total_wh,
         )
         with self._lock:
             self._latest[channel_id] = reading
-            self._last_receive = ts
-            self._last_frame_at = ts
 
     # -- reads ---------------------------------------------------------------
-
-    def latest(self, channel_id: int) -> Optional[Reading]:
-        with self._lock:
-            return self._latest.get(channel_id)
 
     def snapshot(self) -> Dict[int, Reading]:
         """Copy of the latest reading per configured channel."""
@@ -119,15 +99,9 @@ class DataStore:
             return dict(self._latest)
 
     def state(self) -> Dict[str, object]:
-        """Small status blob used in messages and the /api/state endpoint."""
+        """Pi connection flag carried in the ``hello``/``sample`` messages."""
         with self._lock:
-            return {
-                "connected": self._connected,
-                "connected_at": self._connected_at,
-                "last_receive": self._last_receive,
-                "age_s": (time.time() - self._last_receive) if self._last_receive else None,
-                "channels": len(self.channels),
-            }
+            return {"connected": self._connected}
 
     # -- daily energy (one-shot block from the server) -----------------------
 
@@ -183,6 +157,5 @@ def _round_row(reading: Reading) -> List[float]:
         round(reading.voltage_v, 3),
         round(reading.current_a, 3),
         round(reading.power_w, 3),
-        round(reading.session_wh, 3),
         round(reading.total_wh, 3),
     ]

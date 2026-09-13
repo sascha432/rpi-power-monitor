@@ -46,13 +46,11 @@ REG_CONFIG = 0x00
 REG_SHUNT_VOLTAGE = (0x01, 0x03, 0x05)  # shunt voltage, CH1..CH3
 REG_BUS_VOLTAGE = (0x02, 0x04, 0x06)    # bus voltage, CH1..CH3
 REG_MANUFACTURER_ID = 0xFE              # reads 0x5449 ("TI")
-REG_DIE_ID = 0xFF                       # reads 0x3220
 
 # --- Fixed chip characteristics --------------------------------------------
 LSB_SHUNT_V = 5e-6          # volts per raw shunt LSB
 LSB_BUS_V = 8e-3            # volts per (raw >> 3) bus count
 MANUFACTURER_ID_TI = 0x5449
-DIE_ID_INA3221 = 0x3220
 
 # --- CONFIG register field placement ---------------------------------------
 CONFIG_MODE_CONTINUOUS_SHUNT_BUS = 0b111  # bits [2:0]

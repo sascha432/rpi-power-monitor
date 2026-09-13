@@ -48,9 +48,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Metadata for the metrics the UI can chart (mirrors canonical wire fields).
 METRIC_META: Dict[str, Dict[str, Any]] = {
-    "power_w": {"label": "Power", "unit": "W", "kinds": ["rail", "aggregate"]},
-    "voltage_v": {"label": "Voltage", "unit": "V", "kinds": ["rail"]},
-    "current_a": {"label": "Current", "unit": "A", "kinds": ["rail"]},
+    "power_w": {"label": "Power", "unit": "W"},
+    "voltage_v": {"label": "Voltage", "unit": "V"},
+    "current_a": {"label": "Current", "unit": "A"},
 }
 
 _INDEX_NAME = "index.html"
@@ -90,20 +90,18 @@ def _compile_allowlist(entries: Optional[List[str]]) -> List[_Network]:
 
 
 def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
-    """UI catalog delivered in the ``hello`` message (and /api/catalog).
+    """UI catalog delivered in the ``hello`` message.
 
     Only server-derived facts are shipped: the channels (from ``server.yaml``),
-    each metric's label/unit/kind, and the push cadence. ``history_points`` is
-    the browser's rolling chart-buffer depth (samples per channel) - the server
-    itself keeps no sample history. The purely visual defaults (selected
-    metric/theme/energy unit and their options) are browser-local constants in
-    ``static/app.js``.
+    each metric's label/unit, and ``history_points`` - the browser's rolling
+    chart-buffer depth (samples per channel); the server itself keeps no sample
+    history. The purely visual defaults (selected metric/theme/energy unit and
+    their options) are browser-local constants in ``static/app.js``.
     """
     display = cfg.display
     return {
         "title": display.title,
         "metrics": METRIC_META,
-        "update_ms": display.update_ms,
         "history_points": display.history_points,
         "channels": [
             {
@@ -111,7 +109,6 @@ def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
                 "name": channel.name,
                 "label": channel.name,
                 "kind": channel.kind,
-                "aggregate": channel.aggregate,
                 "metrics": metrics_for(channel.kind),
             }
             for channel in cfg.channels
@@ -245,9 +242,6 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
     # -- routing -------------------------------------------------------------
 
     def handle_http(self, request: Any, path: str) -> None:
-        if path.startswith("/api/"):
-            self._handle_api(request, path)
-            return
         target = self._static_target(path)
         if target is None:
             self.respond(request, 404, b"Not Found", "text/plain")
@@ -259,16 +253,6 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
             return
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         self.respond(request, 200, body, ctype)
-
-    def _handle_api(self, request: Any, path: str) -> None:
-        if path == "/api/state":
-            body = json.dumps({"state": self.store.state()}).encode("utf-8")
-        elif path == "/api/catalog":
-            body = json.dumps({"catalog": self._catalog}).encode("utf-8")
-        else:
-            self.respond(request, 404, b"Not Found", "text/plain")
-            return
-        self.respond(request, 200, body, "application/json")
 
     def _static_target(self, path: str) -> Optional[Path]:
         """Resolve a request path to a file under STATIC_DIR (path-safe)."""
@@ -335,7 +319,7 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
 
     def _hello_message(self) -> str:
         return json.dumps(
-            {"type": "hello", "catalog": self._catalog, "state": self.store.state()},
+            {"type": "hello", "catalog": self._catalog},
             separators=(",", ":"),
         )
 

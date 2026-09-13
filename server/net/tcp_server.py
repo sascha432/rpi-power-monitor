@@ -96,12 +96,6 @@ class TcpServer:
                 ", ".join(str(net) for net in self._networks),
             )
 
-    @property
-    def bound_port(self) -> int:
-        """Actual bound port (useful when ``port=0`` was requested)."""
-        assert self._server_socket is not None
-        return self._server_socket.getsockname()[1]
-
     def broadcast(self, payload: bytes) -> None:
         """Send raw bytes to every connected client (drops dead sockets)."""
         if not payload:
