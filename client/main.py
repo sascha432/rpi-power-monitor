@@ -15,7 +15,13 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .config import DEFAULT_CONFIG_PATH, ClientConfig, load_config
+from .config import (
+    DEFAULT_CONFIG_PATH,
+    MAX_CHART_WINDOW_S,
+    ClientConfig,
+    load_config,
+    min_history_points,
+)
 from .net.tcp_client import TcpClient
 from .store import DataStore
 from .web.server import WebDashboardServer
@@ -79,6 +85,25 @@ def main(argv: Optional[List[str]] = None) -> int:
             "no channels found in %s - add a sensor.shunt table there",
             cfg.server_config,
         )
+
+    # history_points is the browser chart-buffer depth, so a value too small for
+    # the pushed cadence makes the browser trim the oldest points and the graph
+    # stops short of the window's left edge (the 1 h / 15 min windows need far
+    # more than a few thousand points at ~7 Hz). Raise it and tell the operator.
+    needed_points = min_history_points(cfg.display.update_ms)
+    if cfg.display.history_points < needed_points:
+        LOGGER.warning(
+            "display.history_points=%d cannot fill the %d s chart window at "
+            "%d ms/sample (needs >= %d); raising it so the graph does not stop "
+            "short - set history_points >= %d in config/client.yaml to silence "
+            "this",
+            cfg.display.history_points,
+            MAX_CHART_WINDOW_S,
+            cfg.display.update_ms,
+            needed_points,
+            needed_points,
+        )
+        cfg.display.history_points = needed_points
 
     store = DataStore(cfg)
     tcp = TcpClient(cfg.connection, store)

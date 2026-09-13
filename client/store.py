@@ -1,22 +1,27 @@
 """Thread-safe in-memory store for the live power-monitor stream.
 
 The TCP reader thread pushes decoded readings in here; the web-server threads
-read latest snapshots and per-channel history from it. Every value is stored
-in canonical SI units (V, A, W, Wh).
+read the latest snapshot per channel. Every value is stored in canonical SI
+units (V, A, W, Wh).
+
+Only the **latest** reading per channel is retained: the browser keeps its own
+rolling chart buffers, so a server-side sample history would be memory nobody
+reads - it existed only to seed a freshly opened chart, which the live stream
+repopulates anyway. (The per-day *energy* totals are a separate one-shot block
+from the Pi and are still stored here - see ``apply_daily``.)
 """
 from __future__ import annotations
 
 import threading
 import time
-from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from shared.catalog import ChannelInfo
 
 from .config import ClientConfig
 
-# Canonical value order used on the wire to the browser (history + sample):
+# Canonical value order used on the wire to the browser (sample messages):
 # (t, voltage_v, current_a, power_w, session_wh, total_wh)
 
 
@@ -31,22 +36,13 @@ class Reading:
     session_wh: float = 0.0
     total_wh: float = 0.0
 
-    def as_list(self) -> List[float]:
-        """Flatten into the canonical ``[t, v, a, w, session_wh, total_wh]`` order."""
-        return [self.t, self.voltage_v, self.current_a, self.power_w,
-                self.session_wh, self.total_wh]
-
 
 class DataStore:
-    """Registry + rolling history + latest snapshot, guarded by one lock."""
+    """Registry + latest snapshot per channel, guarded by one lock."""
 
     def __init__(self, config: ClientConfig) -> None:
-        self._max_points: int = max(2, config.display.history_points)
         self.channels: Dict[int, ChannelInfo] = config.channel_map()
         self._lock = threading.Lock()
-        self._series: Dict[int, Deque[Reading]] = {
-            cid: deque(maxlen=self._max_points) for cid in self.channels
-        }
         self._latest: Dict[int, Reading] = {}
         self._connected = False
         self._connected_at: Optional[float] = None
@@ -73,11 +69,9 @@ class DataStore:
                 return
             self._connected = connected
             self._connected_at = now if connected else None
-            # A fresh connection means a fresh server run: drop old history so
-            # charts don't bridge across a server restart with a time gap.
+            # A fresh connection means a fresh server run: drop the previous
+            # run's snapshots so nothing stale is shown until new frames arrive.
             if connected:
-                for cid in self._series:
-                    self._series[cid].clear()
                 self._latest.clear()
                 # The daily block belongs to the previous server run too: clear
                 # it until the new connection's one-shot block arrives.
@@ -98,7 +92,7 @@ class DataStore:
         total_wh: float = 0.0,
     ) -> None:
         """Store one decoded frame (unknown channel ids are ignored)."""
-        if channel_id not in self._series:
+        if channel_id not in self.channels:
             return  # not in the configured channel table
         reading = Reading(
             t=ts,
@@ -109,20 +103,11 @@ class DataStore:
             total_wh=total_wh,
         )
         with self._lock:
-            self._series[channel_id].append(reading)
             self._latest[channel_id] = reading
             self._last_receive = ts
             self._last_frame_at = ts
 
     # -- reads ---------------------------------------------------------------
-
-    def channel_ids(self) -> List[int]:
-        return sorted(self.channels)
-
-    def history(self, channel_id: int) -> List[Reading]:
-        """Newest-last list of readings for one channel (copy)."""
-        with self._lock:
-            return list(self._series.get(channel_id, ()))
 
     def latest(self, channel_id: int) -> Optional[Reading]:
         with self._lock:
@@ -160,7 +145,7 @@ class DataStore:
         with self._lock:
             kept: Dict[str, Dict[str, float]] = {}
             for cid, entry in per_channel.items():
-                if cid not in self._series:
+                if cid not in self.channels:
                     continue
                 vals = [round(float(v), 4) for v in (entry.get("vals") or [])]
                 if not vals:
@@ -186,22 +171,6 @@ class DataStore:
         """Monotonic counter bumped whenever the daily block is (re)applied."""
         with self._lock:
             return self._daily_rev
-
-    def seed_history(self, max_points: int = 1500) -> Dict[str, List[List[float]]]:
-        """Decimated per-channel history to seed a freshly opened browser tab.
-
-        Rows are the canonical ``[t, v, a, w, session_wh, total_wh]`` order,
-        rounded to save bandwidth. At most ``max_points`` rows per channel and
-        never denser than one row per configured update tick.
-        """
-        step_target = max(1, self._max_points // max_points)
-        out: Dict[str, List[List[float]]] = {}
-        for cid in self.channel_ids():
-            rows = self.history(cid)
-            step = max(step_target, 1)
-            picked = rows[::step][-max_points:]
-            out[str(cid)] = [_round_row(r) for r in picked]
-        return out
 
     def snapshot_rows(self) -> Dict[str, List[float]]:
         """Newest reading per channel as canonical rows (for ``sample`` msgs)."""

@@ -8,10 +8,11 @@ on a Raspberry Pi and shows the data on a **web dashboard** in your browser:
   channels** (rails grouped by a tag), and broadcasts a **raw binary TCP
   stream** (fixed 40-byte frames — easy to consume from C++, scripts, …).
 - **`client/`** — a **stdlib-only Python web server**. Connects to
-  the Pi's raw TCP stream, keeps a rolling history, and serves an offline
-  HTML/JS dashboard over HTTP + **WebSocket**. The WebSocket hands the browser
-  its config/settings catalog (channels, metrics, units, theme) plus live
-  readings; the user's UI choices are stored in a browser cookie.
+  the Pi's raw TCP stream, keeps the latest reading per channel, and serves an
+  offline HTML/JS dashboard over HTTP + **WebSocket**. The WebSocket hands the
+  browser its config/settings catalog (channels, metrics, units, theme), the
+  Pi's daily energy totals plus live readings; the rolling chart buffers and
+  the user's UI choices are browser-side (the latter in a cookie).
 
 ## GUI
 
@@ -55,7 +56,7 @@ rpi-power-monitor/
 ├── client/                  # web-dashboard side (Windows / Linux / Pi)
 │   ├── main.py              #   entry point
 │   ├── config.py            #   typed loader for config/client.yaml
-│   ├── store.py             #   thread-safe rolling history + snapshots
+│   ├── store.py             #   thread-safe latest-reading store
 │   ├── net/
 │   │   └── tcp_client.py    #   reconnecting binary-frame TCP reader
 │   └── web/

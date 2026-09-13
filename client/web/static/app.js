@@ -1,9 +1,11 @@
 /* Power-monitor dashboard UI.
  *
  * Single WebSocket to the dashboard server (/ws). Messages:
- *   hello   -> UI catalog (channels, metrics, units, theme, energy unit, cadence)
- *   history -> per-channel point arrays to seed the chart
- *   sample  -> latest reading per channel (+ Pi connection state) every update_ms
+ *   hello  -> UI catalog (channels, metrics, units, theme, energy unit, cadence)
+ *   daily  -> Pi per-day energy totals (the 7-90 day bars)
+ *   sample -> latest reading per channel (+ Pi connection state) every update_ms
+ *
+ * The chart buffers below are filled purely from the live `sample` stream.
  *
  * The user's UI settings (metric, time window, energy unit, theme, hidden
  * channels) are applied here and persisted in a "pwm_settings" cookie.
@@ -12,8 +14,6 @@
 
 const COOKIE_NAME = "pwm_settings";
 const ARR = { voltage_v: "v", current_a: "a", power_w: "w" }; // buffer per metric
-const KIDX = { voltage_v: 1, current_a: 2, power_w: 3, session_wh: 4, total_wh: 5 };
-const SEED_TOL_S = 1.0; // history align tolerance
 const WINDOWS = [60, 300, 900, 1800, 3600];
 const WINDOW_LABEL = (s) =>
   s < 60 ? s + "s" : s % 3600 === 0 ? s / 3600 + "h" : s / 60 + "m";
@@ -705,7 +705,6 @@ function scheduleReconnect() {
 function handle(msg) {
   if (!msg || !msg.type) return;
   if (msg.type === "hello") onHello(msg);
-  else if (msg.type === "history") onHistory(msg.history || {});
   else if (msg.type === "daily") onDaily(msg);
   else if (msg.type === "sample") onSample(msg);
 }
@@ -722,13 +721,6 @@ function onHello(msg) {
   // reflect the Pi connection state carried by hello
   S.piConnected = !!(msg.state && msg.state.connected);
   updatePill();
-}
-
-function onHistory(history) {
-  resetBuffers();
-  seedFromHistory(history);
-  S.sig = "";
-  renderChart();
 }
 
 // ---- daily energy (N-day history on the focused channel) --------------------
@@ -869,56 +861,12 @@ function resetBuffers() {
   });
 }
 
-function seedFromHistory(history) {
-  // Pick a reference timeline: the channel with the most history rows.
-  let ref = null;
-  Object.keys(history).forEach((key) => {
-    const rows = history[key];
-    if (rows && rows.length && (!ref || rows.length > ref.rows.length)) {
-      ref = { id: Number(key), rows };
-    }
-  });
-  if (!ref) return;
-  const axis = ref.rows.map((r) => r[0]);
-  const n = axis.length;
-  // Give every channel a full-length null column first.
-  Object.keys(S.meta).forEach((key) => {
-    const m = S.meta[key];
-    m.v = new Array(n).fill(null);
-    m.a = new Array(n).fill(null);
-    m.w = new Array(n).fill(null);
-    m.e = new Array(n).fill(null);
-  });
-  // Then write each channel's rows onto the axis (nearest timestamp match).
-  Object.keys(history).forEach((key) => {
-    const m = S.meta[Number(key)];
-    if (!m) return;
-    const rows = history[key];
-    let j = 0;
-    for (let i = 0; i < n; i++) {
-      const t = axis[i];
-      while (j < rows.length - 1 && rows[j + 1][0] <= t) j++;
-      let pick = j;
-      if (j + 1 < rows.length && Math.abs(rows[j + 1][0] - t) < Math.abs(rows[j][0] - t)) pick = j + 1;
-      const r = rows[pick];
-      if (Math.abs(r[0] - t) <= SEED_TOL_S) {
-        m.v[i] = r[KIDX.voltage_v];
-        m.a[i] = r[KIDX.current_a];
-        m.w[i] = r[KIDX.power_w];
-        m.e[i] = r[KIDX.total_wh];
-        m.last = { v: r[KIDX.voltage_v], a: r[KIDX.current_a], w: r[KIDX.power_w], s: r[4], t: r[5] };
-      }
-    }
-  });
-  S.timeline = axis;
-}
-
 function onSample(msg) {
   const rows = msg.channels || {};
   const st = msg.state || {};
   const pi = !!st.connected;
 
-  // A fresh Pi connection means a new server run: drop stale history so the
+  // A fresh Pi connection means a new server run: drop stale samples so the
   // chart does not bridge across a restart gap.
   if (pi && !S._piWas && S.timeline.length > 0) {
     resetBuffers();
@@ -955,7 +903,11 @@ function ageText() {
 }
 
 function trim() {
-  const cap = Math.max(300, (S.catalog && S.catalog.history_points) || 3600);
+  // history_points is this page's chart-buffer depth in samples, sized by the
+  // server so it covers the longest selectable window; a smaller cap would
+  // drop the oldest points and the graph would stop short of the window's left
+  // edge. The fallback only applies if a catalog omits the key.
+  const cap = Math.max(300, (S.catalog && S.catalog.history_points) || 28000);
   if (S.timeline.length <= cap) return;
   const drop = S.timeline.length - cap;
   S.timeline.splice(0, drop);

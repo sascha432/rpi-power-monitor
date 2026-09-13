@@ -20,14 +20,11 @@
         <polyline points="1.25 1.5 4.5 7 1.25 12.5"/>
       </svg>
     </button>
-
     <nav id="sidebar" aria-label="Sections">
-      <!-- Brand row: the fixed #navToggle lands on the spacer, then the title. -->
       <div class="nav-head">
         <span class="nav-head-ic" aria-hidden="true"></span>
         <span class="nav-title">Power Monitor</span>
       </div>
-
       <ul class="nav-list">
         <li>
           <button id="navDashboard" class="nav-item is-active" type="button">
@@ -41,10 +38,8 @@
           </button>
         </li>
       </ul>
-
       <span class="nav-group-title">Channels</span>
       <ul class="nav-list" id="navChannels"></ul>
-
       <ul class="nav-list nav-foot">
         <li>
           <button id="navSettings" class="nav-item" type="button">
@@ -57,10 +52,8 @@
         </li>
       </ul>
     </nav>
-
     <main id="main">
       <section id="cards" aria-label="Channel readings"></section>
-
       <section id="channelView" aria-label="Channel detail" hidden>
         <header class="detail-head">
           <button id="btnBack" class="ghost" type="button" title="Back to the dashboard">← Dashboard</button>
@@ -69,15 +62,12 @@
         </header>
         <div id="channelFocus" aria-label="Focused channel"></div>
       </section>
-
-      <section id="chartBox" aria-label="Dashboard graphs">
+     <section id="chartBox" aria-label="Dashboard graphs">
         <div id="dashGraphs"></div>
       </section>
-
       <section id="settingsView" aria-label="Settings" hidden></section>
     </main>
   </div>
-
   <script src="/static/vendor/uPlot.iife.min.js"></script>
   <script src="/static/app.js"></script>
 </body>

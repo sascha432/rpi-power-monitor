@@ -6,9 +6,12 @@ WebSocket endpoint (``/ws``) that is the single pipe to the browser:
 * on connect the server sends ``hello`` (the UI catalog: tab title, channels,
   metric metadata and cadence - the channels come from the server's
   ``server.yaml`` via ``shared.catalog``, the rest from ``client.yaml``),
-* then ``history`` (per-channel point arrays to seed the charts),
+* then ``daily`` (the Pi's one-shot per-day energy totals),
 * then a ``sample`` every ``display.update_ms`` with the latest readings and
   the Pi connection state.
+
+No sample history is kept or sent: the browser accumulates its own chart
+buffers from the ``sample`` stream.
 
 The user's UI choices (metric, theme, energy unit, time window, hidden
 channels) - and their defaults - are browser-side (``static/app.js`` + a
@@ -90,9 +93,11 @@ def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
     """UI catalog delivered in the ``hello`` message (and /api/catalog).
 
     Only server-derived facts are shipped: the channels (from ``server.yaml``),
-    each metric's label/unit/kind, and the push cadence + history depth. The
-    purely visual defaults (selected metric/theme/energy unit and their
-    options) are browser-local constants in ``static/app.js``.
+    each metric's label/unit/kind, and the push cadence. ``history_points`` is
+    the browser's rolling chart-buffer depth (samples per channel) - the server
+    itself keeps no sample history. The purely visual defaults (selected
+    metric/theme/energy unit and their options) are browser-local constants in
+    ``static/app.js``.
     """
     display = cfg.display
     return {
@@ -303,10 +308,10 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
         conn = WebSocketConnection(request)
         self._register(conn)
         try:
-            # Push catalog + seed history right after the upgrade, then the
-            # per-day energy block (may be empty until the Pi sends one).
+            # Push the catalog and the per-day energy block right after the
+            # upgrade (the block may be empty until the Pi sends one). Live
+            # samples follow from the broadcaster; no sample history is sent.
             conn.send_text(self._hello_message())
-            conn.send_text(self._history_message())
             conn.send_text(self._daily_message())
             run_read_loop(conn, on_message=self._on_client_message)
         except (ConnectionError, OSError, WebSocketError) as exc:
@@ -331,12 +336,6 @@ class WebDashboardServer(socketserver.ThreadingTCPServer):
     def _hello_message(self) -> str:
         return json.dumps(
             {"type": "hello", "catalog": self._catalog, "state": self.store.state()},
-            separators=(",", ":"),
-        )
-
-    def _history_message(self) -> str:
-        return json.dumps(
-            {"type": "history", "history": self.store.seed_history(max_points=1500)},
             separators=(",", ":"),
         )
 
