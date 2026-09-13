@@ -117,12 +117,6 @@ only, and a bare IP like `192.168.0.5` means just that host).
 display:
   title: Power Monitor        # browser tab title
   update_ms: 500              # live-update cadence pushed over the WebSocket
-  history_points: 28000       # depth of the BROWSER's rolling chart buffer, in
-                              # samples per channel (the server keeps no sample
-                              # history). Must be >= 3600 s / update_ms to fill
-                              # the longest chart window (1 h); too small trims
-                              # the oldest points and the graph stops short of
-                              # the window's left edge.
 ```
 
 The *visual* defaults — preselected metric, theme and energy unit, plus which
@@ -135,10 +129,10 @@ configure for them server-side; each visitor's choices live in the
 ## 3. What the browser does with settings (cookie)
 
 * On connect the dashboard sends a **`hello`** message with the *catalog*:
-  channels (from `server.yaml`), metric metadata (label and unit), the tab
-  title and the browser's chart-buffer depth — built from the two config files.
-  The page builds itself from that catalog, while the purely visual defaults
-  come from its own constants in `app.js`.
+  channels (from `server.yaml`), metric metadata (label and unit) and the tab
+  title — built from the two config files. The page builds itself from that
+  catalog, while the purely visual defaults come from its own constants in
+  `app.js`.
 * Your **UI choices are stored in a `pwm_settings` cookie** (metric, energy and
   current units, dashboard/channel chart windows, energy-bar day count, theme,
   metric colours, per-channel "plot" toggles and per-channel metric memory).
@@ -153,7 +147,11 @@ configure for them server-side; each visitor's choices live in the
 * There is **no sample-history message**: the Python client keeps only the
   latest reading per channel, and the browser accumulates its own chart buffers
   from the `sample` stream. A freshly opened or reloaded chart therefore starts
-  empty and fills live (it takes up to the selected window to look full).
+  empty and fills live (it takes up to the selected window to look full). The
+  browser keeps exactly the widest selectable window's worth of samples (1 h)
+  and discards older ones; the trim is timestamp-based, so it is unaffected by
+  the push cadence. The buffer is also cleared when the Pi connection drops and
+  reconnects.
 
 ## 4. Testing without a Pi (optional)
 

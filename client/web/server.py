@@ -92,17 +92,15 @@ def _compile_allowlist(entries: Optional[List[str]]) -> List[_Network]:
 def build_catalog(cfg: ClientConfig) -> Dict[str, Any]:
     """UI catalog delivered in the ``hello`` message.
 
-    Only server-derived facts are shipped: the channels (from ``server.yaml``),
-    each metric's label/unit, and ``history_points`` - the browser's rolling
-    chart-buffer depth (samples per channel); the server itself keeps no sample
-    history. The purely visual defaults (selected metric/theme/energy unit and
-    their options) are browser-local constants in ``static/app.js``.
+    Only server-derived facts are shipped: the channels (from ``server.yaml``)
+    and each metric's label/unit. The purely visual defaults (selected
+    metric/theme/energy unit and their options) are browser-local constants in
+    ``static/app.js``.
     """
     display = cfg.display
     return {
         "title": display.title,
         "metrics": METRIC_META,
-        "history_points": display.history_points,
         "channels": [
             {
                 "id": channel.id,

@@ -871,25 +871,28 @@ function onSample(msg) {
     m.v.push(m.last.v); m.a.push(m.last.a); m.w.push(m.last.w);
   });
   S.timeline.push(S.lastSample);
-  trim();
+  trimToWindow();
 
   renderChart();
 }
 
-function trim() {
-  // history_points is this page's chart-buffer depth in samples, sized by the
-  // server so it covers the longest selectable window; a smaller cap would
-  // drop the oldest points and the graph would stop short of the window's left
-  // edge. The fallback only applies if a catalog omits the key.
-  const cap = Math.max(300, (S.catalog && S.catalog.history_points) || 28000);
-  if (S.timeline.length <= cap) return;
-  const drop = S.timeline.length - cap;
+// Retention == exactly what the widest chart window can display, and nothing
+// more. This is deliberately TIME-based (every point carries its own receipt
+// timestamp), so it does not depend on the push cadence: at a slower or faster
+// sample rate the retained span in seconds is identical - only the point count
+// changes. The widest window is used (not the current one) so that changing the
+// window selector can always be served from the buffer.
+function trimToWindow() {
+  const span = WINDOWS[WINDOWS.length - 1]; // widest selectable window, in s
+  const cutoff = S.lastSample - span;
+  let drop = 0;
+  while (drop < S.timeline.length && S.timeline[drop] < cutoff) drop++;
+  if (drop === 0) return;
   S.timeline.splice(0, drop);
   S.channels.forEach((ch) => {
     const m = S.meta[ch.id];
-    if (m.v.length > cap) m.v.splice(0, m.v.length - cap);
-    if (m.a.length > cap) m.a.splice(0, m.a.length - cap);
-    if (m.w.length > cap) m.w.splice(0, m.w.length - cap);
+    if (!m) return;
+    m.v.splice(0, drop); m.a.splice(0, drop); m.w.splice(0, drop);
   });
 }
 

@@ -54,8 +54,8 @@ web:
 
 # ---------------------------------------------------------------------------
 # Display / dashboard server. The catalog sent to the browser carries only what
-# the server derives: the tab title, the channels + metric metadata (from
-# server.yaml) and the push cadence / history depth.
+# the server derives: the tab title, the channels and metric metadata (from
+# server.yaml).
 #
 # Purely visual defaults - preselected metric, theme, energy unit, and which
 # options the Settings view offers - are browser-local: see the constants at
@@ -65,10 +65,3 @@ web:
 display:
   title: "Power Monitor"    # browser tab title
   update_ms: 133            # WebSocket sample-push cadence (ms)
-  # Depth of the BROWSER's rolling chart buffer, in samples per channel (the
-  # client keeps no sample history itself - only the latest reading). It must
-  # cover the longest chart window the UI offers (1 h) at update_ms:
-  # 3600 s / 0.133 s ~= 27 100 samples, so 28000 leaves a little margin. Too
-  # small a value trims the oldest points and the graph stops short of the
-  # window's left edge.
-  history_points: 28000

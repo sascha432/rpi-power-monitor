@@ -41,20 +41,6 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "client.y
 RAIL_METRICS: Tuple[str, ...] = ("voltage_v", "current_a", "power_w")
 AGGREGATE_METRICS: Tuple[str, ...] = ("power_w",)
 
-# Longest chart time window the dashboard offers, in seconds (the WINDOWS list
-# in client/web/static/app.js). The BROWSER keeps the rolling chart buffer;
-# ``display.history_points`` is shipped to it as that buffer's depth in samples.
-# At ``display.update_ms`` per pushed sample it must be at least this many
-# points to fill the longest window, otherwise the browser trims the oldest
-# samples and the graph stops short of the window's left edge (e.g. a 15-minute
-# window at 133 ms per sample needs ~6 800 points, but 3600 only reached ~8 min).
-MAX_CHART_WINDOW_S = 3600
-
-
-def min_history_points(update_ms: int) -> int:
-    """Smallest browser chart-buffer depth that fills the longest window."""
-    return int(MAX_CHART_WINDOW_S * 1000 / max(1, update_ms)) + 1
-
 
 def metrics_for(kind: str) -> List[str]:
     """Metric keys that a channel of ``kind`` publishes (for the UI catalog)."""
@@ -83,10 +69,6 @@ class WebConfig:
 class DisplayConfig:
     title: str = "Power Monitor"     # browser tab title
     update_ms: int = 500             # WebSocket sample-push cadence
-    # Depth of the BROWSER's rolling chart buffer, in samples per channel (the
-    # server keeps no sample history). Shipped in the UI catalog; must be
-    # >= min_history_points(update_ms) so the deepest chart window can fill.
-    history_points: int = 28000
     # NOTE: the visual UI defaults (metric, theme, energy unit, ...) are NOT
     # configured here - they are browser-local constants in
     # client/web/static/app.js, persisted per visitor in the pwm_settings
@@ -182,7 +164,6 @@ def load_config(
         display=DisplayConfig(
             title=str(display.get("title", "Power Monitor")),
             update_ms=_to_int(display.get("update_ms"), 500),
-            history_points=_to_int(display.get("history_points"), 28000),
         ),
         channels=channels,
         server_config=server_path,
